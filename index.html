@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRM Central — Lead, Demo, Customer & CS Task</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">CR</div>
+        <div>
+          <strong>CRM Central</strong>
+          <small>Lead · Demo · Customer · CS</small>
+        </div>
+      </div>
+
+      <nav id="nav" class="nav"></nav>
+
+      <div class="sidebar-foot">
+        <span id="versionText">v0.1.1</span>
+        <span>GitHub Pages + Supabase</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <p id="pageSub">ภาพรวมระบบ</p>
+        </div>
+
+        <div class="top-actions">
+          <button id="refreshBtn" class="btn ghost" type="button">รีเฟรช</button>
+
+          <button id="notifBtn" class="icon-btn" type="button" title="การแจ้งเตือน">
+            🔔
+            <span id="notifBadge" class="badge hidden">0</span>
+          </button>
+
+          <div class="user-chip">
+            <div id="userAvatar" class="avatar">?</div>
+            <div>
+              <strong id="userName">-</strong>
+              <small id="userRole">-</small>
+            </div>
+          </div>
+
+          <button id="logoutBtn" class="btn danger-soft" type="button">ออกจากระบบ</button>
+        </div>
+      </header>
+
+      <section id="content" class="content"></section>
+    </main>
+  </div>
+
+  <section id="authView" class="auth-view hidden">
+    <div class="auth-card">
+      <div class="brand auth-brand">
+        <div class="brand-logo">CR</div>
+        <div>
+          <strong>CRM Central</strong>
+          <small>เข้าสู่ระบบด้วย Supabase Auth</small>
+        </div>
+      </div>
+
+      <div id="setupWarning" class="alert warning hidden">
+        ยังไม่ได้ตั้งค่า Supabase URL / anon key ใน <code>script.js</code>
+      </div>
+
+      <form id="loginForm" class="form-stack">
+        <label>
+          Email
+          <input id="loginEmail" type="email" autocomplete="email" required />
+        </label>
+        <label>
+          Password
+          <input id="loginPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <button id="loginBtn" class="btn primary full" type="submit">เข้าสู่ระบบ</button>
+      </form>
+
+      <p class="muted center">
+        Admin คนแรกให้สร้างใน Supabase Authentication แล้วรัน SQL promote profile ตาม README
+      </p>
+    </div>
+  </section>
+
+  <div id="notifPanel" class="notif-panel hidden">
+    <div class="panel-head">
+      <strong>การแจ้งเตือน</strong>
+      <button id="markReadBtn" class="btn small ghost" type="button">อ่านทั้งหมด</button>
+    </div>
+    <div id="notifList" class="notif-list"></div>
+  </div>
+
+  <div id="modalOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div id="modal" class="modal">
+      <div class="modal-head">
+        <h2 id="modalTitle">Modal</h2>
+        <button id="modalCloseBtn" class="x-btn" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+      <div id="modalFooter" class="modal-foot"></div>
+    </div>
+  </div>
+
+  <div id="toastWrap" class="toast-wrap"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="script.js"></script>
+</body>
+</html>
