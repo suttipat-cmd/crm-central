@@ -1,4 +1,4 @@
-/* CRM Central v0.1.0 — GitHub Pages + Supabase */
+/* CRM Central v0.1.2 — GitHub Pages + Supabase */
 :root {
   --bg: #f4f6fb;
   --panel: #ffffff;
@@ -511,6 +511,11 @@ tbody tr:hover {
 
 .muted {
   color: var(--muted);
+}
+
+.req {
+  color: var(--red);
+  font-weight: 900;
 }
 
 .center {

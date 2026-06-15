@@ -1,9 +1,9 @@
-/* CRM Central v0.1.1 — GitHub Pages + Supabase
+/* CRM Central v0.1.2 — GitHub Pages + Supabase
    IMPORTANT:
    1) Put your Supabase project URL and anon key below.
    2) Never put service_role key in this file.
 */
-const APP_VERSION = "0.1.1";
+const APP_VERSION = "0.1.2";
 const SUPABASE_URL = "https://eplqmkiftafkvqdgvsfp.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwbHFta2lmdGFma3ZxZGd2c2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MzY1MDcsImV4cCI6MjA5NzExMjUwN30.sfAcajUcAl8mniP1FeOF94jKYCKybNAqf2xqtQpXm0c";
 
@@ -527,7 +527,7 @@ function renderTasks() {
       <div class="card table-wrap">
         <table>
           <thead>
-            <tr><th>Task</th><th>Account</th><th>Type</th><th>CS Owner</th><th>Status</th><th>Priority</th><th>Due</th><th></th></tr>
+            <tr><th>Task</th><th>Account</th><th>Demo Session</th><th>Type</th><th>CS Owner</th><th>Status</th><th>Priority</th><th>Due</th><th></th></tr>
           </thead>
           <tbody>
             ${rows.map((t) => {
@@ -537,6 +537,7 @@ function renderTasks() {
                 <tr class="clickable" data-action="view-task" data-id="${escAttr(t.id)}">
                   <td><div class="twoline"><strong>${esc(t.task_name)}</strong><small>${t.blocker ? `🚧 ${esc(t.blocker)}` : esc(t.notes || "")}</small></div></td>
                   <td>${esc(a?.company_name || "-")}</td>
+                  <td>${t.demo_session_id ? esc(demoLabel(t.demo_session_id)) : `<span class="muted">—</span>`}</td>
                   <td>${esc(t.task_type || "-")}</td>
                   <td>${esc(userName(t.cs_owner_id))}</td>
                   <td>${overdue ? pill("Overdue", "red") : statusPill(t.status)}</td>
@@ -623,8 +624,12 @@ function renderAdmin() {
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>Export / Backup</h3></div>
+        <div class="card-head"><h3>Users / Export / Backup</h3></div>
         <div class="card-body">
+          <div class="alert info">
+            <strong>การสร้าง Sale / CS:</strong>
+            สร้าง login จริงที่ Supabase Authentication → Users ก่อน จากนั้นกลับมาหน้านี้ กดแก้ไข user เพื่อกำหนด Role, Active และ Sales Queue Order
+          </div>
           <p class="muted">Export ใช้ข้อมูลที่ RLS อนุญาตให้ user ปัจจุบันเห็นเท่านั้น</p>
           <div class="row-actions" style="flex-wrap:wrap">${exportBtns}</div>
           <div class="section-title">Sales Auto Assign</div>
@@ -1032,10 +1037,18 @@ function openTaskForm(id = null, accountIdPreset = null, demoSessionIdPreset = n
   const task = isEdit ? taskById(id) : {};
   if (isEdit && !task) return toast("ไม่พบ Task", "err");
 
+  const demoOptions = state.demoSessions
+    .slice()
+    .sort((a, b) => {
+      const accountA = accountName(a.account_id);
+      const accountB = accountName(b.account_id);
+      return accountA.localeCompare(accountB) || (a.demo_no || 0) - (b.demo_no || 0);
+    });
+
   const fields = [
     { key: "task_name", label: "Task Name", value: task.task_name || "", required: true, full: true },
-    { key: "account_id", label: "Account", type: "select", options: ["", ...state.accounts.map((a) => a.id)], optionLabel: accountName, value: accountIdPreset || task.account_id || "", required: true },
-    { key: "demo_session_id", label: "Demo Session", type: "select", options: ["", ...state.demoSessions.map((d) => d.id)], optionLabel: demoLabel, value: demoSessionIdPreset || task.demo_session_id || "" },
+    { key: "account_id", label: "Account", type: "select", options: ["", ...state.accounts.map((a) => a.id)], optionLabel: accountName, value: accountIdPreset || task.account_id || "" },
+    { key: "demo_session_id", label: "Demo Session", type: "select", options: ["", ...demoOptions.map((d) => d.id)], optionLabel: demoLabel, value: demoSessionIdPreset || task.demo_session_id || "" },
     { key: "cs_owner_id", label: "CS Owner", type: "select", options: ["", ...csUsers().map((u) => u.id)], optionLabel: userName, value: task.cs_owner_id || (state.profile.role === "cs" ? state.profile.id : ""), required: true },
     { key: "task_type", label: "Task Type", type: "select", options: TASK_TYPE, value: task.task_type || "Support" },
     { key: "status", label: "Status", type: "select", options: TASK_STATUS.filter((s) => s !== "Overdue"), value: task.status || "To Do" },
@@ -1047,7 +1060,14 @@ function openTaskForm(id = null, accountIdPreset = null, demoSessionIdPreset = n
 
   openForm(isEdit ? "แก้ไข CS Task" : "สร้าง CS Task", fields, async (values) => {
     if (!values.task_name.trim()) throw new Error("กรุณากรอก Task Name");
-    if (!values.account_id) throw new Error("กรุณาเลือก Account");
+
+    if (values.demo_session_id) {
+      const selectedDemo = demoById(values.demo_session_id);
+      if (!selectedDemo) throw new Error("ไม่พบ Demo Session ที่เลือก");
+      values.account_id = selectedDemo.account_id;
+    }
+
+    if (!values.account_id) throw new Error("กรุณาเลือก Account หรือ Demo Session");
     if (!values.cs_owner_id) throw new Error("กรุณาเลือก CS Owner");
 
     if (isEdit) await updateTask(id, values);
@@ -1105,6 +1125,7 @@ function openTaskDetail(id) {
   const body = `
     <div class="detail">
       ${detailRow("Account", esc(a?.company_name || "—"))}
+      ${detailRow("Demo Session", t.demo_session_id ? esc(demoLabel(t.demo_session_id)) : "—")}
       ${detailRow("Task Type", esc(t.task_type || "—"))}
       ${detailRow("Status", isTaskOverdue(t) ? pill("Overdue", "red") : statusPill(t.status))}
       ${detailRow("Priority", priorityPill(t.priority))}
@@ -1290,7 +1311,7 @@ function fieldHTML(f) {
     input = `<input id="${escAttr(id)}" type="${escAttr(f.type || "text")}" value="${escAttr(value)}" ${required} ${disabled} />`;
   }
 
-  return `<label class="${f.full ? "full" : ""}">${esc(f.label)}${f.required ? " *" : ""}${input}</label>`;
+  return `<label class="${f.full ? "full" : ""}">${esc(f.label)}${f.required ? ' <span class="req">*</span>' : ""}${input}</label>`;
 }
 
 function showModal(title, body, footer, large = false) {
