@@ -1,9 +1,9 @@
-/* CRM Central v0.1.2 — GitHub Pages + Supabase
+/* CRM Central v0.1.3 — GitHub Pages + Supabase
    IMPORTANT:
    1) Put your Supabase project URL and anon key below.
    2) Never put service_role key in this file.
 */
-const APP_VERSION = "0.1.2";
+const APP_VERSION = "0.1.3";
 const SUPABASE_URL = "https://eplqmkiftafkvqdgvsfp.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwbHFta2lmdGFma3ZxZGd2c2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MzY1MDcsImV4cCI6MjA5NzExMjUwN30.sfAcajUcAl8mniP1FeOF94jKYCKybNAqf2xqtQpXm0c";
 
@@ -113,6 +113,7 @@ const state = {
   session: null,
   profile: null,
   profiles: [],
+  staff: [],
   accounts: [],
   demoSessions: [],
   tasks: [],
@@ -178,6 +179,7 @@ function wireGlobalEvents() {
 async function login(event) {
   event.preventDefault();
   setLoading($("#loginBtn"), true, "กำลังเข้าสู่ระบบ...");
+  showGlobalLoading("กำลังเข้าสู่ระบบ...");
   try {
     const email = $("#loginEmail").value.trim();
     const password = $("#loginPassword").value;
@@ -187,18 +189,25 @@ async function login(event) {
   } catch (error) {
     toast(error.message || "เข้าสู่ระบบไม่สำเร็จ", "err");
   } finally {
+    hideGlobalLoading();
     setLoading($("#loginBtn"), false, "เข้าสู่ระบบ");
   }
 }
 
 async function logout() {
-  await supabaseClient.auth.signOut();
-  state.session = null;
-  state.profile = null;
-  showAuth();
+  showGlobalLoading("กำลังออกจากระบบ...");
+  try {
+    await supabaseClient.auth.signOut();
+    state.session = null;
+    state.profile = null;
+    showAuth();
+  } finally {
+    hideGlobalLoading();
+  }
 }
 
 async function bootApp(isManualRefresh = false) {
+  showGlobalLoading(isManualRefresh ? "กำลังรีเฟรชข้อมูล..." : "กำลังโหลดข้อมูล...");
   try {
     showApp();
     await loadAll();
@@ -209,6 +218,8 @@ async function bootApp(isManualRefresh = false) {
   } catch (error) {
     console.error(error);
     toast(error.message || "โหลดข้อมูลไม่สำเร็จ", "err");
+  } finally {
+    hideGlobalLoading();
   }
 }
 
@@ -240,19 +251,21 @@ async function loadAll() {
 
   state.profile = profileRes.data;
 
-  const [profilesRes, accountsRes, demosRes, tasksRes, eventsRes] = await Promise.all([
-    supabaseClient.from("profiles").select("*").order("role").order("sales_queue_order", { nullsFirst: false }).order("full_name"),
+  const [profilesRes, staffRes, accountsRes, demosRes, tasksRes, eventsRes] = await Promise.all([
+    supabaseClient.from("profiles").select("*").order("role").order("full_name"),
+    supabaseClient.from("staff_members").select("*").order("role").order("sales_queue_order", { nullsFirst: false }).order("full_name"),
     supabaseClient.from("accounts").select("*").order("updated_at", { ascending: false }).limit(500),
     supabaseClient.from("demo_sessions").select("*").order("created_at", { ascending: false }).limit(500),
     supabaseClient.from("cs_tasks").select("*").order("updated_at", { ascending: false }).limit(500),
     supabaseClient.from("app_events").select("*").order("created_at", { ascending: false }).limit(700),
   ]);
 
-  [profilesRes, accountsRes, demosRes, tasksRes, eventsRes].forEach((res) => {
+  [profilesRes, staffRes, accountsRes, demosRes, tasksRes, eventsRes].forEach((res) => {
     if (res.error) throw res.error;
   });
 
   state.profiles = profilesRes.data || [];
+  state.staff = staffRes.data || [];
   state.accounts = accountsRes.data || [];
   state.demoSessions = demosRes.data || [];
   state.tasks = tasksRes.data || [];
@@ -357,14 +370,14 @@ function renderDashboard() {
     </div>
 
     <div class="card" style="margin-top:16px">
-      <div class="card-head"><h3>Performance รายคน</h3></div>
+      <div class="card-head"><h3>Performance รายคน (Sale / CS)</h3></div>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>ผู้ใช้</th><th>Role</th><th>Active</th><th>Accounts</th><th>Demo</th><th>Customer</th><th>Tasks</th><th>Overdue</th></tr>
+            <tr><th>ชื่อ</th><th>Role</th><th>Active</th><th>Accounts</th><th>Demo</th><th>Customer</th><th>Tasks</th><th>Overdue</th></tr>
           </thead>
           <tbody>
-            ${state.profiles.filter((u) => ["sales", "cs"].includes(u.role)).map((u) => {
+            ${state.staff.filter((u) => ["sales", "cs"].includes(u.role)).map((u) => {
               const acc = state.accounts.filter((a) => a.sales_owner_id === u.id || a.cs_owner_id === u.id);
               const dms = state.demoSessions.filter((d) => d.cs_owner_id === u.id);
               const cus = acc.filter((a) => a.lifecycle_stage === "customer");
@@ -372,7 +385,7 @@ function renderDashboard() {
               const od = tasks.filter((t) => isTaskOverdue(t)).length;
               return `
                 <tr>
-                  <td><strong>${esc(u.full_name || u.email)}</strong></td>
+                  <td><strong>${esc(u.full_name || "-")}</strong></td>
                   <td>${esc(ROLE_LABELS[u.role] || u.role)}</td>
                   <td>${u.is_active ? pill("Active", "green") : pill("Inactive", "gray")}</td>
                   <td>${acc.length}</td>
@@ -457,7 +470,7 @@ function renderDemos() {
     <div class="toolbar">
       ${searchInput("demos", f.q)}
       ${selectFilter("demos", "status", "ทุก Status", DEMO_STATUS, (v) => v)}
-      ${selectFilter("demos", "owner", "ทุก CS", state.profiles.filter((u) => u.role === "cs").map((u) => u.id), (id) => userName(id))}
+      ${selectFilter("demos", "owner", "ทุก CS", csUsers().map((u) => u.id), (id) => userName(id))}
       <button class="btn primary" type="button" data-action="new-demo">＋ สร้าง Demo Session</button>
     </div>
 
@@ -518,7 +531,7 @@ function renderTasks() {
     <div class="toolbar">
       ${searchInput("tasks", f.q)}
       ${selectFilter("tasks", "status", "ทุก Status", TASK_STATUS, (v) => v)}
-      ${selectFilter("tasks", "owner", "ทุก CS", state.profiles.filter((u) => u.role === "cs").map((u) => u.id), (id) => userName(id))}
+      ${selectFilter("tasks", "owner", "ทุก CS", csUsers().map((u) => u.id), (id) => userName(id))}
       ${selectFilter("tasks", "priority", "ทุก Priority", PRIORITY, (v) => v)}
       <button class="btn primary" type="button" data-action="new-task">＋ สร้าง Task</button>
     </div>
@@ -596,17 +609,59 @@ function renderAdmin() {
     <button class="btn" type="button" data-action="export-accounts">Export Accounts CSV</button>
     <button class="btn" type="button" data-action="export-demos">Export Demo CSV</button>
     <button class="btn" type="button" data-action="export-tasks">Export Task CSV</button>
+    <button class="btn" type="button" data-action="export-staff">Export Staff CSV</button>
   `;
 
   return `
     <div class="grid two">
       <div class="card">
         <div class="card-head">
-          <h3>Users / Roles / Sales Queue</h3>
+          <h3>Sale / CS Staff</h3>
+          <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+            ${hasRole(["admin"]) ? `
+              <button class="btn small primary" type="button" data-action="new-staff-sales">＋ Sale</button>
+              <button class="btn small primary" type="button" data-action="new-staff-cs">＋ CS</button>
+            ` : ""}
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="alert info">
+            <strong>Sale / CS ในหน้านี้ไม่ใช่ Login User</strong><br>
+            ใช้เป็นรายชื่อสำหรับ assign Lead, Demo และ CS Task เท่านั้น ถ้าจะให้ใคร login ระบบ ต้องสร้าง user ที่ Supabase Authentication แยกต่างหาก
+          </div>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th>Queue</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th>Active</th><th>Queue</th><th></th></tr></thead>
+            <tbody>
+              ${state.staff.length ? state.staff.map((u) => `
+                <tr>
+                  <td><strong>${esc(u.full_name || "-")}</strong></td>
+                  <td>${esc(ROLE_LABELS[u.role] || u.role)}</td>
+                  <td>${esc(u.phone || "-")}</td>
+                  <td>${esc(u.email || "-")}</td>
+                  <td>${u.is_active ? pill("Active", "green") : pill("Inactive", "gray")}</td>
+                  <td>${u.role === "sales" ? (u.sales_queue_order ?? "-") : "-"}</td>
+                  <td>${hasRole(["admin"]) ? `<button class="btn small" type="button" data-action="edit-staff" data-id="${escAttr(u.id)}">แก้ไข</button>` : ""}</td>
+                </tr>
+              `).join("") : `<tr><td colspan="7" class="muted">ยังไม่มี Sale / CS</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>Login Users / Roles</h3>
+        </div>
+        <div class="card-body">
+          <div class="alert warning">
+            Login user ต้องสร้างที่ <strong>Supabase Authentication → Users</strong> เท่านั้น แล้วค่อยกลับมากำหนด role ในตารางนี้
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th></th></tr></thead>
             <tbody>
               ${state.profiles.map((u) => `
                 <tr>
@@ -614,7 +669,6 @@ function renderAdmin() {
                   <td>${esc(u.email || "-")}</td>
                   <td>${esc(ROLE_LABELS[u.role] || u.role)}</td>
                   <td>${u.is_active ? pill("Active", "green") : pill("Inactive", "gray")}</td>
-                  <td>${u.sales_queue_order ?? "-"}</td>
                   <td>${hasRole(["admin"]) ? `<button class="btn small" type="button" data-action="edit-user" data-id="${escAttr(u.id)}">แก้ไข</button>` : ""}</td>
                 </tr>
               `).join("")}
@@ -624,16 +678,12 @@ function renderAdmin() {
       </div>
 
       <div class="card">
-        <div class="card-head"><h3>Users / Export / Backup</h3></div>
+        <div class="card-head"><h3>Export / Backup</h3></div>
         <div class="card-body">
-          <div class="alert info">
-            <strong>การสร้าง Sale / CS:</strong>
-            สร้าง login จริงที่ Supabase Authentication → Users ก่อน จากนั้นกลับมาหน้านี้ กดแก้ไข user เพื่อกำหนด Role, Active และ Sales Queue Order
-          </div>
           <p class="muted">Export ใช้ข้อมูลที่ RLS อนุญาตให้ user ปัจจุบันเห็นเท่านั้น</p>
           <div class="row-actions" style="flex-wrap:wrap">${exportBtns}</div>
           <div class="section-title">Sales Auto Assign</div>
-          <p>Marketing Lead จะใช้ round-robin จาก Sales ที่ <strong>active</strong> เรียงตาม <code>sales_queue_order</code></p>
+          <p>Marketing Lead จะใช้ round-robin จาก <strong>staff_members.role = sales</strong> ที่ active เรียงตาม <code>sales_queue_order</code></p>
         </div>
       </div>
     </div>
@@ -660,10 +710,14 @@ function bindPageEvents() {
       if (action === "view-task") return openTaskDetail(id);
 
       if (action === "edit-user") return openUserForm(id);
+      if (action === "new-staff-sales") return openStaffForm(null, "sales");
+      if (action === "new-staff-cs") return openStaffForm(null, "cs");
+      if (action === "edit-staff") return openStaffForm(id);
 
       if (action === "export-accounts") return exportCSV("accounts", state.accounts);
       if (action === "export-demos") return exportCSV("demo_sessions", state.demoSessions);
       if (action === "export-tasks") return exportCSV("cs_tasks", state.tasks);
+      if (action === "export-staff") return exportCSV("staff_members", state.staff);
     });
   });
 
@@ -734,7 +788,9 @@ function openAccountForm(id = null, preset = {}) {
 }
 
 function defaultSalesOwnerForForm(origin) {
-  if (origin === "sales" && state.profile.role === "sales") return state.profile.id;
+  if (origin === "sales" && state.profile.role === "sales") {
+    return staffForCurrentUser("sales")?.id || "";
+  }
   return "";
 }
 
@@ -753,7 +809,12 @@ async function createAccount(values) {
     payload.origin = origin;
     payload.created_by = state.profile.id;
 
-    if (origin === "sales") payload.sales_owner_id = state.profile.role === "sales" ? state.profile.id : payload.sales_owner_id;
+    if (origin === "sales") {
+      const linkedSales = staffForCurrentUser("sales");
+      payload.sales_owner_id = linkedSales?.id || payload.sales_owner_id;
+      if (!payload.sales_owner_id) throw new Error("กรุณาเลือก Sales Owner");
+    }
+
     if (origin === "cs") {
       payload.lifecycle_stage = "customer";
       if (!payload.sales_owner_id) throw new Error("CS-created Customer ต้องเลือก Sales Owner");
@@ -876,34 +937,45 @@ async function convertAccountToCustomer(id) {
   if (!a) return toast("ไม่พบ Account", "err");
   if (!a.sales_owner_id) return toast("ต้องมี Sales Owner ก่อนแปลงเป็น Customer", "err");
 
-  const { error } = await supabaseClient.from("accounts").update({
-    lifecycle_stage: "customer",
-    customer_status: a.customer_status || "New Customer",
-    lead_status: a.lead_status || "Converted to Customer",
-    updated_at: new Date().toISOString(),
-  }).eq("id", id);
+  showGlobalLoading("กำลังแปลงเป็น Customer...");
+  try {
+    const { error } = await supabaseClient.from("accounts").update({
+      lifecycle_stage: "customer",
+      customer_status: a.customer_status || "New Customer",
+      lead_status: a.lead_status || "Converted to Customer",
+      updated_at: new Date().toISOString(),
+    }).eq("id", id);
 
-  if (error) return toast(error.message, "err");
-  await logEvent({ account_id: id, event_type: "audit", title: "Converted เป็น Customer", message: a.company_name });
-  toast("แปลงเป็น Customer แล้ว", "ok");
-  closeModal();
-  await bootApp();
+    if (error) return toast(error.message, "err");
+    await logEvent({ account_id: id, event_type: "audit", title: "Converted เป็น Customer", message: a.company_name });
+    toast("แปลงเป็น Customer แล้ว", "ok");
+    closeModal();
+    await bootApp();
+  } finally {
+    hideGlobalLoading();
+  }
 }
 
 async function closeAccountLost(id) {
   const a = accountById(id);
   if (!a) return toast("ไม่พบ Account", "err");
-  const { error } = await supabaseClient.from("accounts").update({
-    lifecycle_stage: "closed",
-    lead_status: a.lead_status === "Interested in Demo" ? "Lost" : (a.lead_status || "Lost"),
-    updated_at: new Date().toISOString(),
-  }).eq("id", id);
 
-  if (error) return toast(error.message, "err");
-  await logEvent({ account_id: id, event_type: "audit", title: "ตัดจบ / Lost", message: a.company_name });
-  toast("ตัดจบแล้ว", "ok");
-  closeModal();
-  await bootApp();
+  showGlobalLoading("กำลังตัดจบ Account...");
+  try {
+    const { error } = await supabaseClient.from("accounts").update({
+      lifecycle_stage: "closed",
+      lead_status: a.lead_status === "Interested in Demo" ? "Lost" : (a.lead_status || "Lost"),
+      updated_at: new Date().toISOString(),
+    }).eq("id", id);
+
+    if (error) return toast(error.message, "err");
+    await logEvent({ account_id: id, event_type: "audit", title: "ตัดจบ / Lost", message: a.company_name });
+    toast("ตัดจบแล้ว", "ok");
+    closeModal();
+    await bootApp();
+  } finally {
+    hideGlobalLoading();
+  }
 }
 
 function openDemoForm(id = null, accountIdPreset = null) {
@@ -942,7 +1014,7 @@ function defaultCsOwnerForDemo(accountId, current) {
     .filter((d) => d.account_id === accountId && d.cs_owner_id)
     .sort((a, b) => (b.demo_no || 0) - (a.demo_no || 0))[0];
 
-  return latest?.cs_owner_id || account?.cs_owner_id || (state.profile.role === "cs" ? state.profile.id : "");
+  return latest?.cs_owner_id || account?.cs_owner_id || staffForCurrentUser("cs")?.id || "";
 }
 
 async function createDemo(values) {
@@ -1049,7 +1121,7 @@ function openTaskForm(id = null, accountIdPreset = null, demoSessionIdPreset = n
     { key: "task_name", label: "Task Name", value: task.task_name || "", required: true, full: true },
     { key: "account_id", label: "Account", type: "select", options: ["", ...state.accounts.map((a) => a.id)], optionLabel: accountName, value: accountIdPreset || task.account_id || "" },
     { key: "demo_session_id", label: "Demo Session", type: "select", options: ["", ...demoOptions.map((d) => d.id)], optionLabel: demoLabel, value: demoSessionIdPreset || task.demo_session_id || "" },
-    { key: "cs_owner_id", label: "CS Owner", type: "select", options: ["", ...csUsers().map((u) => u.id)], optionLabel: userName, value: task.cs_owner_id || (state.profile.role === "cs" ? state.profile.id : ""), required: true },
+    { key: "cs_owner_id", label: "CS Owner", type: "select", options: ["", ...csUsers().map((u) => u.id)], optionLabel: userName, value: task.cs_owner_id || staffForCurrentUser("cs")?.id || "", required: true },
     { key: "task_type", label: "Task Type", type: "select", options: TASK_TYPE, value: task.task_type || "Support" },
     { key: "status", label: "Status", type: "select", options: TASK_STATUS.filter((s) => s !== "Overdue"), value: task.status || "To Do" },
     { key: "priority", label: "Priority", type: "select", options: PRIORITY, value: task.priority || "Medium" },
@@ -1147,17 +1219,22 @@ function openTaskDetail(id) {
 
 async function markTaskDone(id) {
   const t = taskById(id);
-  const { error } = await supabaseClient.from("cs_tasks").update({
-    status: "Done",
-    closed_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq("id", id);
+  showGlobalLoading("กำลังปิดงาน...");
+  try {
+    const { error } = await supabaseClient.from("cs_tasks").update({
+      status: "Done",
+      closed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", id);
 
-  if (error) return toast(error.message, "err");
-  await logEvent({ account_id: t.account_id, demo_session_id: t.demo_session_id, task_id: id, event_type: "audit", title: "ปิด Task", message: t.task_name });
-  toast("ปิดงานแล้ว", "ok");
-  closeModal();
-  await bootApp();
+    if (error) return toast(error.message, "err");
+    await logEvent({ account_id: t.account_id, demo_session_id: t.demo_session_id, task_id: id, event_type: "audit", title: "ปิด Task", message: t.task_name });
+    toast("ปิดงานแล้ว", "ok");
+    closeModal();
+    await bootApp();
+  } finally {
+    hideGlobalLoading();
+  }
 }
 
 function openNoteForm(type, id) {
@@ -1181,32 +1258,80 @@ function openNoteForm(type, id) {
   });
 }
 
+
+function openStaffForm(id = null, defaultRole = "sales") {
+  if (!hasRole(["admin"])) return toast("เฉพาะ Admin เท่านั้น", "err");
+  const isEdit = Boolean(id);
+  const staff = isEdit ? state.staff.find((u) => u.id === id) : { role: defaultRole, is_active: true };
+  if (isEdit && !staff) return toast("ไม่พบ Sale / CS", "err");
+
+  const fields = [
+    { key: "full_name", label: "ชื่อ Sale / CS", value: staff.full_name || "", required: true },
+    { key: "role", label: "Role", type: "select", options: ["sales", "cs"], value: staff.role || defaultRole, required: true },
+    { key: "phone", label: "Phone", value: staff.phone || "" },
+    { key: "email", label: "Email", type: "email", value: staff.email || "" },
+    { key: "is_active", label: "Active", type: "select", options: ["true", "false"], value: String(staff.is_active !== false), required: true },
+    { key: "sales_queue_order", label: "Sales Queue Order", type: "number", value: staff.sales_queue_order ?? "" },
+  ];
+
+  openForm(isEdit ? "แก้ไข Sale / CS" : "เพิ่ม Sale / CS", fields, async (values) => {
+    if (!values.full_name.trim()) throw new Error("กรุณากรอกชื่อ Sale / CS");
+    if (!["sales", "cs"].includes(values.role)) throw new Error("Role ต้องเป็น sales หรือ cs");
+
+    const payload = {
+      full_name: values.full_name.trim(),
+      role: values.role,
+      phone: values.phone || null,
+      email: values.email || null,
+      is_active: values.is_active === "true",
+      sales_queue_order: values.role === "sales" && values.sales_queue_order !== "" ? Number(values.sales_queue_order) : null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (isEdit) {
+      const { error } = await supabaseClient.from("staff_members").update(payload).eq("id", id);
+      if (error) throw error;
+      await logEvent({ event_type: "audit", title: "แก้ไข Sale / CS", message: payload.full_name });
+      toast("บันทึก Sale / CS แล้ว", "ok");
+    } else {
+      const { data, error } = await supabaseClient.from("staff_members").insert({
+        ...payload,
+        created_by: state.profile.id,
+      }).select().single();
+      if (error) throw error;
+      await logEvent({ event_type: "audit", title: "เพิ่ม Sale / CS", message: data.full_name });
+      toast("เพิ่ม Sale / CS แล้ว", "ok");
+    }
+
+    closeModal();
+    await bootApp();
+  });
+}
+
 function openUserForm(id) {
   const user = state.profiles.find((u) => u.id === id);
   if (!user) return toast("ไม่พบ User", "err");
 
   const fields = [
     { key: "full_name", label: "Full Name", value: user.full_name || "" },
-    { key: "role", label: "Role", type: "select", options: Object.keys(ROLE_LABELS), value: user.role || "sales", required: true },
+    { key: "role", label: "Login Role", type: "select", options: Object.keys(ROLE_LABELS), value: user.role || "sales", required: true },
     { key: "is_active", label: "Active", type: "select", options: ["true", "false"], value: String(user.is_active !== false) },
-    { key: "sales_queue_order", label: "Sales Queue Order", type: "number", value: user.sales_queue_order ?? "" },
   ];
 
-  openForm("แก้ไข User", fields, async (values) => {
+  openForm("แก้ไข Login User", fields, async (values) => {
     const payload = {
       full_name: values.full_name || null,
       role: values.role,
       is_active: values.is_active === "true",
-      sales_queue_order: values.sales_queue_order === "" ? null : Number(values.sales_queue_order),
       updated_at: new Date().toISOString(),
     };
 
     const { error } = await supabaseClient.from("profiles").update(payload).eq("id", id);
     if (error) throw error;
 
-    await logEvent({ event_type: "audit", title: "แก้ไข User", message: user.email });
+    await logEvent({ event_type: "audit", title: "แก้ไข Login User", message: user.email });
     closeModal();
-    toast("บันทึก User แล้ว", "ok");
+    toast("บันทึก Login User แล้ว", "ok");
     await bootApp();
   });
 }
@@ -1262,10 +1387,15 @@ function renderNotifList() {
 async function markAllNotificationsRead() {
   const ids = state.events.filter((e) => e.event_type === "notification" && e.assigned_to_id === state.profile?.id && !e.is_read).map((e) => e.id);
   if (!ids.length) return;
-  const { error } = await supabaseClient.from("app_events").update({ is_read: true }).in("id", ids);
-  if (error) return toast(error.message, "err");
-  await bootApp();
-  renderNotifList();
+  showGlobalLoading("กำลังอัปเดตการแจ้งเตือน...");
+  try {
+    const { error } = await supabaseClient.from("app_events").update({ is_read: true }).in("id", ids);
+    if (error) return toast(error.message, "err");
+    await bootApp();
+    renderNotifList();
+  } finally {
+    hideGlobalLoading();
+  }
 }
 
 function openForm(title, fields, onSave) {
@@ -1279,6 +1409,7 @@ function openForm(title, fields, onSave) {
   $("#modalSaveBtn").addEventListener("click", async () => {
     const btn = $("#modalSaveBtn");
     setLoading(btn, true, "กำลังบันทึก...");
+    showGlobalLoading("กำลังบันทึกข้อมูล...");
     try {
       const values = {};
       fields.forEach((f) => {
@@ -1290,6 +1421,8 @@ function openForm(title, fields, onSave) {
       console.error(error);
       toast(error.message || "บันทึกไม่สำเร็จ", "err");
       setLoading(btn, false, "บันทึก");
+    } finally {
+      hideGlobalLoading();
     }
   });
 }
@@ -1311,7 +1444,8 @@ function fieldHTML(f) {
     input = `<input id="${escAttr(id)}" type="${escAttr(f.type || "text")}" value="${escAttr(value)}" ${required} ${disabled} />`;
   }
 
-  return `<label class="${f.full ? "full" : ""}">${esc(f.label)}${f.required ? ' <span class="req">*</span>' : ""}${input}</label>`;
+  const label = `<span class="field-title">${esc(f.label)}${f.required ? ' <span class="req">*</span>' : ""}</span>`;
+  return `<label class="${f.full ? "full" : ""}">${label}${input}</label>`;
 }
 
 function showModal(title, body, footer, large = false) {
@@ -1407,19 +1541,24 @@ function exportCSV(name, rows) {
   if (!hasRole(["admin", "management"])) return toast("เฉพาะ Admin / Management เท่านั้น", "err");
   if (!rows.length) return toast("ไม่มีข้อมูลให้ export", "err");
 
-  const cols = Object.keys(rows[0]).filter((k) => !["metadata"].includes(k));
-  const csv = [cols.join(",")]
-    .concat(rows.map((row) => cols.map((col) => csvCell(row[col])).join(",")))
-    .join("\n");
+  showGlobalLoading("กำลังเตรียมไฟล์ Export...");
+  try {
+    const cols = Object.keys(rows[0]).filter((k) => !["metadata"].includes(k));
+    const csv = [cols.join(",")]
+      .concat(rows.map((row) => cols.map((col) => csvCell(row[col])).join(",")))
+      .join("\n");
 
-  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${name}_${today()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  toast("Export แล้ว", "ok");
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name}_${today()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("Export แล้ว", "ok");
+  } finally {
+    hideGlobalLoading();
+  }
 }
 
 function csvCell(value) {
@@ -1447,6 +1586,8 @@ function taskById(id) {
 
 function userName(id) {
   if (!id) return "—";
+  const staff = state.staff.find((u) => u.id === id);
+  if (staff) return staff.full_name || staff.email || id;
   const user = state.profiles.find((u) => u.id === id);
   return user?.full_name || user?.email || id;
 }
@@ -1465,15 +1606,31 @@ function demoLabel(id) {
 }
 
 function usersForOwnerOptions() {
-  return state.profiles.filter((u) => ["sales", "cs"].includes(u.role));
+  return state.staff.filter((u) => ["sales", "cs"].includes(u.role));
 }
 
 function salesUsers() {
-  return state.profiles.filter((u) => u.role === "sales" && u.is_active !== false).sort((a, b) => (a.sales_queue_order ?? 9999) - (b.sales_queue_order ?? 9999));
+  return state.staff
+    .filter((u) => u.role === "sales" && u.is_active !== false)
+    .sort((a, b) => (a.sales_queue_order ?? 9999) - (b.sales_queue_order ?? 9999) || (a.full_name || "").localeCompare(b.full_name || ""));
 }
 
 function csUsers() {
-  return state.profiles.filter((u) => u.role === "cs" && u.is_active !== false).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+  return state.staff
+    .filter((u) => u.role === "cs" && u.is_active !== false)
+    .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+}
+
+function staffForCurrentUser(role = null) {
+  const profileEmail = String(state.profile?.email || "").toLowerCase();
+  return state.staff.find((u) => {
+    const staffEmail = String(u.email || "").toLowerCase();
+    return (
+      (u.linked_profile_id === state.profile?.id || (profileEmail && staffEmail && staffEmail === profileEmail)) &&
+      (!role || u.role === role) &&
+      u.is_active !== false
+    );
+  }) || null;
 }
 
 function hasRole(roles) {
@@ -1508,6 +1665,25 @@ function initials(name) {
 
 function uniq(arr) {
   return [...new Set(arr.filter((x) => x != null && x !== ""))];
+}
+
+
+let loadingDepth = 0;
+
+function showGlobalLoading(message = "กำลังโหลด...") {
+  loadingDepth += 1;
+  const overlay = $("#globalLoading");
+  const text = $("#globalLoadingText");
+  if (text) text.textContent = message;
+  if (overlay) overlay.classList.remove("hidden");
+}
+
+function hideGlobalLoading() {
+  loadingDepth = Math.max(0, loadingDepth - 1);
+  if (loadingDepth === 0) {
+    const overlay = $("#globalLoading");
+    if (overlay) overlay.classList.add("hidden");
+  }
 }
 
 function setLoading(button, loading, text) {
