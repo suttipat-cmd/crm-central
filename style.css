@@ -1419,7 +1419,7 @@ form[aria-busy="true"] button {
 }
 
 
-/* v1.3.0 lead form and legacy field polish */
+/* v1.3.0 lead form polish */
 .modal-form {
   padding-bottom: 96px;
 }
@@ -1506,5 +1506,94 @@ form[aria-busy="true"] button {
   .detail-meta,
   .meta-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+
+/* v1.4.0 hover sidebar and compact Thai UI */
+.app-layout.sidebar-collapsed {
+  grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr);
+}
+
+.app-layout.sidebar-collapsed .sidebar {
+  width: var(--sidebar-collapsed);
+  overflow: hidden;
+}
+
+.app-layout.sidebar-collapsed .sidebar:hover,
+.app-layout.sidebar-collapsed .sidebar:focus-within {
+  width: var(--sidebar);
+  padding-left: 14px;
+  padding-right: 14px;
+  box-shadow: 16px 0 40px rgba(15, 23, 42, .20);
+}
+
+.sidebar-toggle {
+  display: none !important;
+}
+
+.app-layout.sidebar-collapsed .sidebar:hover .brand,
+.app-layout.sidebar-collapsed .sidebar:focus-within .brand {
+  justify-content: flex-start;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.app-layout.sidebar-collapsed .sidebar:hover .brand-copy,
+.app-layout.sidebar-collapsed .sidebar:hover .nav-label,
+.app-layout.sidebar-collapsed .sidebar:hover .sidebar-footer,
+.app-layout.sidebar-collapsed .sidebar:focus-within .brand-copy,
+.app-layout.sidebar-collapsed .sidebar:focus-within .nav-label,
+.app-layout.sidebar-collapsed .sidebar:focus-within .sidebar-footer {
+  width: auto;
+  opacity: 1;
+  overflow: visible;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.app-layout.sidebar-collapsed .sidebar:hover .nav-link,
+.app-layout.sidebar-collapsed .sidebar:focus-within .nav-link {
+  justify-content: flex-start;
+  padding: 11px 12px;
+}
+
+.page-header p,
+.card-subtitle,
+.auth-help {
+  display: none;
+}
+
+.modal-header p {
+  display: none;
+}
+
+.modal-header {
+  align-items: center;
+}
+
+.empty-state p {
+  display: none;
+}
+
+@media (max-width: 1040px) {
+  .app-layout.sidebar-collapsed .sidebar {
+    width: auto;
+    overflow: visible;
+  }
+
+  .app-layout.sidebar-collapsed .sidebar:hover,
+  .app-layout.sidebar-collapsed .sidebar:focus-within {
+    width: auto;
+    box-shadow: none;
+  }
+
+  .app-layout.sidebar-collapsed .brand-copy,
+  .app-layout.sidebar-collapsed .nav-label,
+  .app-layout.sidebar-collapsed .sidebar-footer {
+    width: auto;
+    opacity: 1;
+    overflow: visible;
+    pointer-events: auto;
   }
 }
