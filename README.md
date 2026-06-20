@@ -1,11 +1,21 @@
 # Internal CRM Ops
 
-Current version: `1.4.2`  
-Release date: `2026-06-20`  
+Current version: `1.5.0`  
+Release date: `2026-06-21`  
 Stack: GitHub Pages + Supabase + plain HTML/CSS/JS  
 Repository files allowed: `README.md`, `index.html`, `script.js`, `style.css`
 
 ## Changelog
+
+### v1.5.0 — UX Flow Stabilization
+
+- หลัง login เปิดหน้า `งานของฉัน` เป็นค่าเริ่มต้น
+- เมื่อผู้ใช้สลับไป browser tab อื่นแล้วกลับมา ระบบจะ reload ข้อมูลล่าสุดและเลื่อนกลับขึ้นบนหน้า
+- ป้องกัน reload อัตโนมัติถ้ามี modal/form เปิดอยู่ เพื่อไม่ให้ข้อมูลที่กำลังกรอกหาย
+- หน้า `เดโม` ใช้ `demo_sessions` เป็น source of truth จึงแสดงประวัติเดโมแม้ account จะเปลี่ยนเป็นลูกค้า หรือปิด Lost แล้ว
+- หน้า `เดโม` default แสดงรายการที่กำลังทำ/รอทำ และมี tab สำหรับทั้งหมด/จบแล้ว/เป็นลูกค้า/ปิด Lost
+- ลด view ที่ไม่จำเป็นในแต่ละหน้าให้ตรงกับ flow งานจริง: Lead/Account/Customer ใช้ตาราง+รายการ, Demo ใช้ตาราง+รายการ+ปฏิทิน, Task ใช้บอร์ด+รายการ+ปฏิทิน, Training ใช้ปฏิทิน+รายการ+ตาราง
+- ไม่มี SQL migration ใหม่
 
 ### v1.4.2 — Hotfix Render Permission Helper
 
@@ -58,14 +68,26 @@ Lead → Demo → Customer → Lost / Churn
 
 ## Current UX Behavior
 
+- หลัง login เปิด `งานของฉัน` เป็นหน้าแรก
+- เมื่อกลับมาจาก browser tab อื่น ระบบ reload ข้อมูลและเลื่อนขึ้นบน โดยไม่ interrupt modal/form
 - Sidebar ย่อเป็น icon-only เป็นค่าเริ่มต้น
 - Hover หรือ focus ที่ sidebar แล้วขยายอัตโนมัติ
 - ไม่มีปุ่มย่อ/ขยาย sidebar
 - ฟอร์มสร้าง/เพิ่มข้อมูลเปิดเป็น modal
 - หน้า Leads default แสดง Lead ที่ยังเปิด แต่ยังดู All/Demo/Customer/Lost ได้
+- หน้า Demo แสดงจากบันทึก `demo_sessions` ทั้ง active และ history
 - Collection หลักมี search/filter/sort/pagination
 - Master data ที่ยังไม่ถูกใช้งานลบได้
 - Master data ที่ถูกใช้งานแล้วต้องปิดใช้งานแทนการลบ
+
+
+## UX Flow v1.5.0
+
+- หน้าเริ่มต้นหลัง login คือ `#/my-work`
+- การกลับมาจาก browser tab อื่นจะ reload data และ scroll ขึ้นบน
+- ถ้ามี modal/form เปิดอยู่ ระบบจะไม่ reload อัตโนมัติ
+- เมนูเดโมแสดงจาก `demo_sessions` ไม่ได้ดูเฉพาะ `accounts.lifecycle_stage = demo`
+- เดโมที่เคยบันทึกไว้ยังค้นเจอ แม้บัญชีจะเป็น Customer หรือ Lost แล้ว
 
 ## Frontend Pages
 
@@ -172,9 +194,13 @@ const CONFIG = {
 
 ห้ามใส่ `service_role key` ใน frontend
 
-## SQL Migration v1.4.1
+## SQL / Migration
 
-ถ้าเคยรัน v1.3.0 แล้ว ให้รันไฟล์ `internal-crm-ops-v1.4.1-migration.sql` ก่อน deploy frontend
+v1.5.0 ไม่มี SQL migration ใหม่ ถ้าระบบของคุณเคยรัน migration v1.4.x แล้ว deploy frontend ได้เลย
+
+### SQL Migration v1.4.x
+
+ถ้าอัปเกรดจาก v1.3.0 ให้รัน migration v1.4.x ก่อน deploy frontend
 
 สิ่งที่ migration ทำ:
 
@@ -191,7 +217,7 @@ const CONFIG = {
 ```bash
 git status
 git add README.md index.html script.js style.css
-git commit -m "release: thai ui hover sidebar master delete v1.4.1"
+git commit -m "release: ux flow stabilization v1.5.0"
 git push
 ```
 
@@ -204,7 +230,9 @@ Mac: Cmd + Shift + R
 
 ## Test Checklist
 
-- Login ด้วย Admin
+- Login ด้วย Admin แล้วควรเข้า `งานของฉัน`
+- เปิดหน้าอื่น เลื่อนลงล่าง สลับ browser tab แล้วกลับมา ต้อง reload และ scroll ขึ้นบน
+- เมนูเดโมต้องเห็นรายการจาก demo_sessions แม้ account จะเป็นลูกค้าแล้ว
 - รัน SQL migration v1.4.1 สำเร็จ
 - เปิด Sidebar แล้วเห็น icon-only
 - Hover sidebar แล้วเมนูขยาย
@@ -230,4 +258,4 @@ git push
 
 Database:
 
-v1.4.1 ลบ column `legacy_account_id` ถ้าต้อง rollback DB ต้อง restore จาก Supabase backup เท่านั้น
+v1.4.x ลบ column `legacy_account_id` ถ้าต้อง rollback DB ต้อง restore จาก Supabase backup เท่านั้น

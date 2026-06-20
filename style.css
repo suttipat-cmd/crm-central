@@ -1597,3 +1597,38 @@ form[aria-busy="true"] button {
     pointer-events: auto;
   }
 }
+
+
+/* v1.5.0 UX flow stabilization */
+.page-caption {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: .88rem;
+}
+
+.demo-tabs {
+  margin-bottom: 14px;
+}
+
+.demo-tabs .tab {
+  white-space: nowrap;
+}
+
+.view-switcher {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 760px) {
+  .demo-tabs,
+  .view-switcher {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .demo-tabs .tab,
+  .view-switcher .view-btn {
+    flex: 0 0 auto;
+  }
+}

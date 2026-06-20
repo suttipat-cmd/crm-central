@@ -1,12 +1,12 @@
 
 /*
   ระบบ CRM ภายใน
-  Version: 1.4.2
+  Version: 1.5.0
   Stack: GitHub Pages + Supabase
   Files: README.md, index.html, script.js, style.css
 */
 
-const APP_VERSION = '1.4.2'
+const APP_VERSION = '1.5.0'
 
 const CONFIG = {
   supabaseUrl: 'https://eplqmkiftafkvqdgvsfp.supabase.co',
@@ -3966,3 +3966,534 @@ async function toggleMaster(table, id, active) {
   toast('อัปเดตแล้ว', 'success')
 }
 
+
+
+/* v1.5.0 UX Flow Stabilization: default work page, return refresh, demo history */
+var crmLastHiddenAt = 0
+var crmLastVisibilityRefreshAt = 0
+var crmVisibilityRefreshInFlight = false
+var crmVisibilityListenerAttached = false
+var crmHashScrollListenerAttached = false
+
+;(function applyV150Defaults() {
+  const routeOrder = ['my-work', 'dashboard', 'leads', 'demo', 'customers', 'tasks', 'training', 'accounts', 'reports', 'admin']
+  ROUTES.sort((a, b) => routeOrder.indexOf(a.key) - routeOrder.indexOf(b.key))
+
+  Object.assign(STATUS_LABELS, {
+    requested: 'รอเดโม',
+    active: 'กำลังเดโม',
+    extended: 'ขยายเวลา',
+    ended: 'จบเดโม',
+    converted: 'เป็นลูกค้า',
+    lost: 'ปิด Lost',
+    demo_requested: 'รอเดโม',
+    demo_active: 'กำลังเดโม'
+  })
+
+  if (!state.filters.demo) state.filters.demo = defaultFilter('demo')
+  state.filters.demo.scope = state.filters.demo.scope || 'active'
+  state.viewModes.demo = ['table', 'list', 'calendar'].includes(state.viewModes.demo) ? state.viewModes.demo : 'table'
+})()
+
+async function init() {
+  state.sidebarCollapsed = true
+
+  if (!isConfigured()) {
+    renderSetupRequired()
+    return
+  }
+
+  try {
+    attachV150BrowserListeners()
+
+    state.client = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    })
+
+    const { data, error } = await state.client.auth.getSession()
+    if (error) throw error
+    state.session = data.session
+    state.user = data.session?.user || null
+
+    state.client.auth.onAuthStateChange(async (_event, session) => {
+      state.session = session
+      state.user = session?.user || null
+      if (state.user) {
+        await bootstrapUser()
+      } else {
+        state.profile = null
+        resetCache()
+      }
+      render()
+    })
+
+    if (state.user) {
+      await bootstrapUser()
+    }
+
+    render()
+  } catch (error) {
+    renderFatalError(error)
+  }
+}
+
+function attachV150BrowserListeners() {
+  if (!crmVisibilityListenerAttached) {
+    document.addEventListener('visibilitychange', handleVisibilityRefresh)
+    crmVisibilityListenerAttached = true
+  }
+
+  if (!crmHashScrollListenerAttached) {
+    window.addEventListener('hashchange', () => window.setTimeout(scrollToPageTop, 0))
+    crmHashScrollListenerAttached = true
+  }
+}
+
+async function handleVisibilityRefresh() {
+  if (document.visibilityState === 'hidden') {
+    crmLastHiddenAt = Date.now()
+    return
+  }
+
+  if (document.visibilityState !== 'visible') return
+  if (!state.user || !isActiveUser()) return
+  if (hasBlockingFormOrModal()) return
+
+  const now = Date.now()
+  const wasHiddenLongEnough = crmLastHiddenAt && now - crmLastHiddenAt > 1200
+  const notTooFrequent = now - crmLastVisibilityRefreshAt > 8000
+  if (!wasHiddenLongEnough || !notTooFrequent || crmVisibilityRefreshInFlight) return
+
+  crmVisibilityRefreshInFlight = true
+  crmLastVisibilityRefreshAt = now
+  try {
+    await loadAllData()
+    render()
+    window.setTimeout(scrollToPageTop, 0)
+  } catch (error) {
+    toast(error.message || String(error), 'error')
+  } finally {
+    crmVisibilityRefreshInFlight = false
+  }
+}
+
+function hasBlockingFormOrModal() {
+  if (state.modal) return true
+  if (document.querySelector('[data-modal-card]')) return true
+  if (document.querySelector('form[data-busy="true"]')) return true
+  const activeForm = document.querySelector('form[data-form]:not(.login-card)')
+  return Boolean(activeForm)
+}
+
+function scrollToPageTop() {
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    const content = document.getElementById('page-content')
+    if (content) content.scrollTop = 0
+  } catch (_error) {
+    window.scrollTo(0, 0)
+  }
+}
+
+function getRoute() {
+  const hash = (location.hash || '#/my-work').replace(/^#\/?/, '')
+  const [key, id] = hash.split('/')
+  if (key === 'account' && id) return { key: 'account', id }
+  return { key: key || 'my-work' }
+}
+
+async function login(form) {
+  const values = formValues(form)
+  if (!nullIfBlank(values.email) || !nullIfBlank(values.password)) {
+    throw createValidationError('กรุณากรอกอีเมลและรหัสผ่าน', ['email', 'password'])
+  }
+
+  const shouldGoToDefault = !location.hash || location.hash === '#/' || location.hash === '#/dashboard'
+  const { error } = await state.client.auth.signInWithPassword({
+    email: values.email,
+    password: values.password
+  })
+  if (error) throw error
+
+  if (shouldGoToDefault) location.hash = '#/my-work'
+  toast('เข้าสู่ระบบแล้ว', 'success')
+}
+
+async function refreshData() {
+  try {
+    await loadAllData()
+    render()
+    scrollToPageTop()
+    toast('รีเฟรชแล้ว', 'success')
+  } catch (error) {
+    toast(error.message || String(error), 'error')
+  }
+}
+
+function onClick(event) {
+  const closeBtn = event.target.closest('[data-close-modal]')
+  if (closeBtn || event.target.matches('[data-modal-backdrop]')) {
+    closeModal()
+    return
+  }
+
+  const openModalBtn = event.target.closest('[data-open-modal]')
+  if (openModalBtn) {
+    openModalFromDataset(openModalBtn.dataset)
+    return
+  }
+
+  const nav = event.target.closest('[data-nav]')
+  if (nav) {
+    location.hash = `#/${nav.dataset.nav}`
+    return
+  }
+
+  const navAccount = event.target.closest('[data-nav-account]')
+  if (navAccount) {
+    location.hash = `#/account/${navAccount.dataset.navAccount}`
+    return
+  }
+
+  const viewBtn = event.target.closest('[data-view-key]')
+  if (viewBtn) {
+    state.viewModes[viewBtn.dataset.viewKey] = viewBtn.dataset.viewMode
+    render()
+    scrollToPageTop()
+    return
+  }
+
+  const leadTab = event.target.closest('[data-lead-tab]')
+  if (leadTab) {
+    const filter = getFilter('leads')
+    filter.stage = leadTab.dataset.leadTab
+    filter.page = 1
+    render()
+    scrollToPageTop()
+    return
+  }
+
+  const demoTab = event.target.closest('[data-demo-tab]')
+  if (demoTab) {
+    const filter = getFilter('demo')
+    filter.scope = demoTab.dataset.demoTab || 'active'
+    filter.page = 1
+    render()
+    scrollToPageTop()
+    return
+  }
+
+  const tabBtn = event.target.closest('[data-account-tab]')
+  if (tabBtn) {
+    state.accountTabs[tabBtn.dataset.accountId] = tabBtn.dataset.accountTab
+    render()
+    scrollToPageTop()
+    return
+  }
+
+  const pageBtn = event.target.closest('[data-page-key]')
+  if (pageBtn) {
+    const filter = getFilter(pageBtn.dataset.pageKey)
+    filter.page = Number(filter.page || 1) + Number(pageBtn.dataset.pageDelta || 0)
+    render()
+    scrollToPageTop()
+    return
+  }
+
+  const action = event.target.closest('[data-action]')
+  if (!action) return
+
+  const type = action.dataset.action
+  if (type === 'toggle-sidebar') return
+  if (type === 'logout') return withActionBusy(action, logout)
+  if (type === 'refresh-data') return withActionBusy(action, refreshData)
+  if (type === 'print') return window.print()
+  if (type === 'show-lost-form') {
+    state.modal = { type: 'mark-lost', accountId: action.dataset.id }
+    render()
+    return
+  }
+  if (type === 'convert-customer') return withActionBusy(action, () => convertCustomer(action.dataset.id))
+  if (type === 'mark-task-done') return withActionBusy(action, () => markTaskDone(action.dataset.id))
+  if (type === 'save-profile') return withActionBusy(action, () => saveProfile(action.dataset.id))
+  if (type === 'toggle-master') return withActionBusy(action, () => toggleMaster(action.dataset.table, action.dataset.id, action.dataset.active === 'true'))
+  if (type === 'clear-filters') {
+    const key = action.dataset.filterKey
+    state.filters[key] = defaultFilter(key)
+    render()
+    scrollToPageTop()
+  }
+}
+
+function renderViewSwitcher(key) {
+  const mode = state.viewModes[key] || 'table'
+  const modesByPage = {
+    leads: ['table', 'list'],
+    accounts: ['table', 'list'],
+    demo: ['table', 'list', 'calendar'],
+    customers: ['table', 'list'],
+    tasks: ['board', 'list', 'calendar'],
+    training: ['calendar', 'list', 'table']
+  }
+  const modes = modesByPage[key] || ['table', 'list']
+  if (!modes.includes(mode)) state.viewModes[key] = modes[0]
+  return `
+    <div class="view-switcher">
+      ${modes.map((item) => `<button class="view-btn ${state.viewModes[key] === item ? 'active' : ''}" type="button" data-view-key="${key}" data-view-mode="${item}">${viewLabel(item)}</button>`).join('')}
+    </div>
+  `
+}
+
+function defaultFilter(key) {
+  if (key === 'leads') return { q: '', stage: 'lead', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  if (key === 'accounts') return { q: '', stage: '', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  if (key === 'tasks') return { q: '', status: '', owner: '', priority: '', sort: 'due_asc', page: 1, pageSize: 25 }
+  if (key === 'training') return { q: '', status: '', owner: '', sort: 'date_asc', page: 1, pageSize: 25 }
+  if (key === 'demo') return { q: '', scope: 'active', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  if (key === 'customers') return { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  return { q: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+}
+
+function renderDemo() {
+  const filter = getFilter('demo')
+  filter.scope = filter.scope || 'active'
+  const scopedDemos = demoSessionsByScope(filter.scope)
+
+  return `
+    <div class="page-header">
+      <div>
+        <h2>เดโม</h2>
+        <p class="page-caption">แสดงจากบันทึกเดโมโดยตรง แม้บัญชีจะเปลี่ยนเป็นลูกค้าหรือปิดแล้ว</p>
+      </div>
+      ${renderViewSwitcher('demo')}
+    </div>
+    ${renderDemoTabs(filter.scope)}
+    <div class="card">
+      ${renderDemoCollection(scopedDemos, 'demo')}
+    </div>
+  `
+}
+
+function renderDemoTabs(activeScope) {
+  const tabs = [
+    ['active', 'กำลังทำ / รอทำ'],
+    ['all', 'ทั้งหมด'],
+    ['ended', 'จบแล้ว'],
+    ['converted', 'เป็นลูกค้า'],
+    ['lost', 'ปิด Lost']
+  ]
+
+  return `
+    <div class="tabs demo-tabs" role="tablist" aria-label="ตัวกรองเดโม">
+      ${tabs.map(([scope, label]) => `
+        <button class="tab ${String(activeScope || 'active') === scope ? 'active' : ''}" type="button" data-demo-tab="${escapeAttr(scope)}">${escapeHTML(label)} (${demoSessionsByScope(scope).length})</button>
+      `).join('')}
+    </div>
+  `
+}
+
+function demoSessionsByScope(scope) {
+  const demos = state.cache.demos || []
+  const activeStatuses = ['requested', 'active', 'extended']
+  if (scope === 'all') return demos.slice()
+  if (scope === 'ended') return demos.filter((demo) => ['ended', 'cancelled'].includes(demo.demo_status))
+  if (scope === 'converted') {
+    return demos.filter((demo) => demo.demo_status === 'converted' || findAccount(demo.account_id)?.lifecycle_stage === 'customer')
+  }
+  if (scope === 'lost') {
+    return demos.filter((demo) => demo.demo_status === 'lost' || findAccount(demo.account_id)?.lost_from_stage === 'demo')
+  }
+  return demos.filter((demo) => activeStatuses.includes(demo.demo_status || 'requested'))
+}
+
+function renderDemoCollection(items, key) {
+  const prepared = prepareDemoCollection(items, key)
+  const mode = ['table', 'list', 'calendar'].includes(state.viewModes[key]) ? state.viewModes[key] : 'table'
+  let body = ''
+  if (mode === 'calendar') body = renderCalendarEvents(prepared.items.flatMap((demo) => demoCalendarEvents(demo)))
+  else if (mode === 'list') body = renderDemoList(prepared.items)
+  else body = renderDemoTable(prepared.items)
+
+  return `
+    ${renderDemoToolbar(key, items.length, prepared.total)}
+    ${body}
+    ${renderPagination(key, prepared)}
+  `
+}
+
+function prepareDemoCollection(items, key) {
+  const filter = getFilter(key)
+  let rows = filterDemoCollection(items, filter)
+  rows = sortDemoCollection(rows, filter.sort)
+  const total = rows.length
+  const pageSize = Math.max(1, Number(filter.pageSize || 25))
+  const maxPage = Math.max(1, Math.ceil(total / pageSize))
+  const page = Math.min(Math.max(1, Number(filter.page || 1)), maxPage)
+  filter.page = page
+  filter.pageSize = pageSize
+  const start = (page - 1) * pageSize
+  return {
+    items: rows.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+    maxPage
+  }
+}
+
+function filterDemoCollection(items, filter) {
+  const q = String(filter.q || '').trim().toLowerCase()
+  return items.filter((demo) => {
+    if (q && !matchesDemoSearch(demo, q)) return false
+    if (filter.status && demo.demo_status !== filter.status) return false
+    if (filter.owner) {
+      const account = findAccount(demo.account_id)
+      const csOwners = state.cache.accountCsOwners
+        .filter((owner) => owner.account_id === demo.account_id)
+        .map((owner) => owner.cs_user_id)
+      const ownerFields = [demo.sale_owner_id, demo.cs_owner_id, account?.sale_owner_id].concat(csOwners)
+      if (!ownerFields.includes(filter.owner)) return false
+    }
+    return true
+  })
+}
+
+function matchesDemoSearch(demo, q) {
+  const account = findAccount(demo.account_id)
+  const contacts = account?.id ? state.cache.contacts.filter((contact) => contact.account_id === account.id) : []
+  const haystack = [
+    account?.running_no,
+    account?.company_name,
+    account?.short_name,
+    account?.tax_id,
+    account?.initial_note,
+    account?.product_interest,
+    account?.current_gps_provider,
+    demo.demo_status,
+    demo.demo_result,
+    demo.requirement_note,
+    demo.follow_up_note,
+    masterName('leadChannels', account?.lead_channel_id),
+    masterName('businessTypes', account?.business_type_id),
+    ...contacts.flatMap((contact) => [contact.contact_name, contact.position, contact.email, contact.email_2, contact.phone, contact.phone_2, contact.phone_3])
+  ].filter(Boolean).join(' ').toLowerCase()
+  return haystack.includes(q)
+}
+
+function sortDemoCollection(rows, sort) {
+  const copy = rows.slice()
+  copy.sort((a, b) => {
+    if (sort === 'date_asc') return String(a.start_date || a.end_date || '9999').localeCompare(String(b.start_date || b.end_date || '9999'))
+    if (sort === 'created_desc') return String(b.created_at || '').localeCompare(String(a.created_at || ''))
+    return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''))
+  })
+  return copy
+}
+
+function renderDemoToolbar(key, rawTotal, filteredTotal) {
+  const filter = getFilter(key)
+  const owners = state.cache.profiles.filter((profile) => profile.is_active || profile.role !== ROLES.PENDING)
+  return `
+    <div class="filter-panel" data-filter-panel="${key}">
+      <div class="filter-row">
+        <label class="search-field">
+          <span>ค้นหา</span>
+          <input type="search" value="${escapeAttr(filter.q || '')}" data-filter-control data-filter-key="${key}" data-filter-name="q" placeholder="ค้นหาบัญชี ผู้ติดต่อ เบอร์ อีเมล หรือผลเดโม">
+        </label>
+        ${selectFilter(key, 'status', 'สถานะเดโม', demoStatusOptions(), filter.status || '')}
+        ${selectFilter(key, 'owner', 'ผู้รับผิดชอบ', [['', 'ทุกคน']].concat(owners.map((profile) => [profile.id, displayUser(profile.id)])), filter.owner || '')}
+      </div>
+      <div class="filter-row secondary">
+        ${selectFilter(key, 'sort', 'เรียง', [['updated_desc', 'อัปเดตล่าสุด'], ['date_asc', 'วันที่ใกล้สุด'], ['created_desc', 'สร้างล่าสุด']], filter.sort || 'updated_desc')}
+        ${selectFilter(key, 'pageSize', 'แถว', [['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']], String(filter.pageSize || 25))}
+        <button class="btn small" type="button" data-action="clear-filters" data-filter-key="${key}">ล้าง</button>
+        <span class="result-count">${filteredTotal} / ${rawTotal}</span>
+      </div>
+    </div>
+  `
+}
+
+function demoStatusOptions() {
+  return [
+    ['', 'ทุกสถานะ'],
+    ['requested', 'รอเดโม'],
+    ['active', 'กำลังเดโม'],
+    ['extended', 'ขยายเวลา'],
+    ['ended', 'จบเดโม'],
+    ['cancelled', 'ยกเลิก'],
+    ['converted', 'เป็นลูกค้า'],
+    ['lost', 'ปิด Lost']
+  ]
+}
+
+function renderDemoTable(items) {
+  if (!items.length) return emptyState('ไม่มีเดโม', '')
+  const rows = items.map((demo) => {
+    const account = findAccount(demo.account_id)
+    return `
+      <tr>
+        <td><button class="btn small" type="button" data-nav-account="${demo.account_id}">${escapeHTML(accountTitle(account))}</button></td>
+        <td>${badge(demo.demo_status || 'requested')}</td>
+        <td>${formatDate(demo.start_date)}</td>
+        <td>${formatDate(demo.end_date)}</td>
+        <td>${escapeHTML(displayUser(demo.sale_owner_id || account?.sale_owner_id))}</td>
+        <td>${escapeHTML(demo.demo_result || '-')}</td>
+        <td>${formatDateTime(demo.updated_at || demo.created_at)}</td>
+      </tr>
+    `
+  }).join('')
+
+  return `
+    <div class="table-wrap responsive-table">
+      <table>
+        <thead><tr><th>บัญชี</th><th>สถานะ</th><th>เริ่ม</th><th>สิ้นสุด</th><th>Sale</th><th>ผลเดโม</th><th>อัปเดต</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `
+}
+
+function renderDemoList(items) {
+  if (!items.length) return emptyState('ไม่มีเดโม', '')
+  return `
+    <div class="list-view">
+      ${items.map((demo) => {
+        const account = findAccount(demo.account_id)
+        return `
+          <div class="list-item">
+            <div class="list-title">
+              <span>${escapeHTML(accountTitle(account))}</span>
+              <span>${badge(demo.demo_status || 'requested')} ${badge(account?.lifecycle_stage || '-')}</span>
+            </div>
+            <div class="list-meta">
+              เริ่ม: ${formatDate(demo.start_date)} · สิ้นสุด: ${formatDate(demo.end_date)} · Sale: ${escapeHTML(displayUser(demo.sale_owner_id || account?.sale_owner_id))}<br>
+              ผลเดโม: ${escapeHTML(demo.demo_result || '-')}<br>
+              ความต้องการ: ${escapeHTML(demo.requirement_note || '-')}
+            </div>
+            <div class="actions"><button class="btn small" type="button" data-nav-account="${demo.account_id}">เปิดบัญชี</button></div>
+          </div>
+        `
+      }).join('')}
+    </div>
+  `
+}
+
+function demoCalendarEvents(demo) {
+  const account = findAccount(demo.account_id)
+  const title = accountTitle(account)
+  const events = []
+  if (demo.start_date) events.push({ date: demo.start_date, title: `เริ่มเดโม: ${title}`, accountId: demo.account_id })
+  if (demo.end_date) events.push({ date: demo.end_date, title: `สิ้นสุดเดโม: ${title}`, accountId: demo.account_id })
+  return events
+}
+
+function filterOptionsFor(type, key, name) {
+  if (type === 'demo') return demoStatusOptions()
+  if (type === 'tasks') return [['', 'ทุกสถานะ'], ['open', 'เปิด'], ['in_progress', 'กำลังทำ'], ['blocked', 'ติดปัญหา'], ['done', 'เสร็จแล้ว'], ['cancelled', 'ยกเลิก']]
+  if (type === 'training') return [['', 'ทุกสถานะ'], ['planned', 'วางแผน'], ['done', 'เสร็จแล้ว'], ['cancelled', 'ยกเลิก']]
+  return [['', 'ทุกสถานะ'], ['new', 'ใหม่'], ['assigned', 'มอบหมายแล้ว'], ['contacted', 'ติดต่อแล้ว'], ['follow_up', 'ติดตามต่อ'], ['demo_requested', 'ขอเดโม'], ['customer_active', 'ลูกค้าใช้งาน'], ['lost', 'ปิด Lost'], ['churned', 'เลิกใช้งาน']]
+}
