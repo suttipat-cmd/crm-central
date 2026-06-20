@@ -1,12 +1,12 @@
 
 /*
   ระบบ CRM ภายใน
-  Version: 1.4.0
+  Version: 1.4.1
   Stack: GitHub Pages + Supabase
   Files: README.md, index.html, script.js, style.css
 */
 
-const APP_VERSION = '1.4.0'
+const APP_VERSION = '1.4.1'
 
 const CONFIG = {
   supabaseUrl: 'https://eplqmkiftafkvqdgvsfp.supabase.co',
@@ -47,26 +47,26 @@ const TABLES = {
   trainings: 'training_sessions',
   trainingParticipants: 'training_participants',
   modules: 'modules',
-  accountสินค้า: 'account_modules',
+  accountModules: 'account_modules',
   tasks: 'tasks',
   taskComments: 'task_comments',
   assignmentHistory: 'assignment_history',
   statusHistory: 'status_history',
   lostReasons: 'lost_reasons',
-  leadประเภทs: 'lead_sources',
+  leadSources: 'lead_sources',
   campaigns: 'campaigns',
-  contactสถานะes: 'contact_statuses',
+  contactStatuses: 'contact_statuses',
   businessTypes: 'business_types',
   leadChannels: 'lead_channels',
-  accountCsผู้รับผิดชอบs: 'account_cs_owners',
+  accountCsOwners: 'account_cs_owners',
   appSettings: 'app_settings'
 }
 
 const MASTER_TABLES = [
-  { key: 'leadประเภทs', table: TABLES.leadประเภทs, label: 'แหล่งที่มาs', nameField: 'name' },
+  { key: 'leadSources', table: TABLES.leadSources, label: 'แหล่งที่มาs', nameField: 'name' },
   { key: 'campaigns', table: TABLES.campaigns, label: 'แคมเปญs', nameField: 'name' },
   { key: 'modules', table: TABLES.modules, label: 'สินค้า', nameField: 'module_name' },
-  { key: 'contactสถานะes', table: TABLES.contactสถานะes, label: 'Contact สถานะes', nameField: 'name' },
+  { key: 'contactStatuses', table: TABLES.contactStatuses, label: 'Contact สถานะes', nameField: 'name' },
   { key: 'businessTypes', table: TABLES.businessTypes, label: 'ประเภทธุรกิจ', nameField: 'name' },
   { key: 'leadChannels', table: TABLES.leadChannels, label: 'ช่องทาง', nameField: 'name' },
   { key: 'lostReasons', table: TABLES.lostReasons, label: 'เหตุผลที่ปิด', nameField: 'reason_name' }
@@ -129,18 +129,18 @@ const state = {
     trainings: [],
     trainingParticipants: [],
     modules: [],
-    accountสินค้า: [],
+    accountModules: [],
     tasks: [],
     taskComments: [],
     assignmentHistory: [],
     statusHistory: [],
     lostReasons: [],
-    leadประเภทs: [],
+    leadSources: [],
     campaigns: [],
-    contactสถานะes: [],
+    contactStatuses: [],
     businessTypes: [],
     leadChannels: [],
-    accountCsผู้รับผิดชอบs: []
+    accountCsOwners: []
   }
 }
 
@@ -168,7 +168,7 @@ async function init() {
     state.client = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
       auth: {
         persistSession: true,
-        autoรีเฟรชToken: true,
+        autoRefreshToken: true,
         detectSessionInUrl: true
       }
     })
@@ -217,7 +217,7 @@ async function bootstrapUser() {
   state.loading = true
   renderLoading('กำลังโหลดสิทธิ์ผู้ใช้...')
   await loadProfile()
-  if (isใช้งานUser()) {
+  if (isActiveUser()) {
     await loadAllData()
   }
   state.loading = false
@@ -239,11 +239,11 @@ async function loadProfile() {
   }
 }
 
-function isใช้งานUser() {
+function isActiveUser() {
   return Boolean(state.profile && state.profile.is_active && state.profile.role !== ROLES.PENDING)
 }
 
-function hasสิทธิ์(roles) {
+function hasPermissionิ์(roles) {
   if (!Array.isArray(roles)) return false
   return roles.includes(state.profile?.role)
 }
@@ -273,18 +273,18 @@ async function loadAllData() {
     ['trainings', TABLES.trainings, '*', 'training_date'],
     ['trainingParticipants', TABLES.trainingParticipants, '*', 'created_at'],
     ['modules', TABLES.modules, '*', 'module_name'],
-    ['accountสินค้า', TABLES.accountสินค้า, '*', 'created_at'],
+    ['accountModules', TABLES.accountModules, '*', 'created_at'],
     ['tasks', TABLES.tasks, '*', 'due_at'],
     ['taskComments', TABLES.taskComments, '*', 'created_at'],
     ['assignmentHistory', TABLES.assignmentHistory, '*', 'created_at'],
     ['statusHistory', TABLES.statusHistory, '*', 'created_at'],
     ['lostReasons', TABLES.lostReasons, '*', 'reason_name'],
-    ['leadประเภทs', TABLES.leadประเภทs, '*', 'name'],
+    ['leadSources', TABLES.leadSources, '*', 'name'],
     ['campaigns', TABLES.campaigns, '*', 'name'],
-    ['contactสถานะes', TABLES.contactสถานะes, '*', 'name'],
+    ['contactStatuses', TABLES.contactStatuses, '*', 'name'],
     ['businessTypes', TABLES.businessTypes, '*', 'name'],
     ['leadChannels', TABLES.leadChannels, '*', 'name'],
-    ['accountCsผู้รับผิดชอบs', TABLES.accountCsผู้รับผิดชอบs, '*', 'created_at']
+    ['accountCsOwners', TABLES.accountCsOwners, '*', 'created_at']
   ]
 
   const results = await Promise.all(tables.map(async ([cacheKey, table, select, order]) => {
@@ -303,7 +303,7 @@ async function loadAllData() {
   for (const [cacheKey, rows] of results) {
     state.cache[cacheKey] = rows
   }
-  state.lastSyncedAt = new วันที่().toISOString()
+  state.lastSyncedAt = new Date().toISOString()
 }
 
 function render() {
@@ -317,7 +317,7 @@ function render() {
     return
   }
 
-  if (!isใช้งานUser()) {
+  if (!isActiveUser()) {
     renderPending()
     return
   }
@@ -343,7 +343,7 @@ function render() {
     return
   }
 
-  if (!hasสิทธิ์(nav.roles)) {
+  if (!hasPermissionิ์(nav.roles)) {
     app.innerHTML = renderAppLayout('ไม่มีสิทธิ์เข้าถึง', renderUnauthorized(), '')
     return
   }
@@ -370,7 +370,7 @@ function renderAppLayout(title, content, activeKey) {
 
 function renderSidebar(activeKey) {
   const links = ROUTES
-    .filter((item) => hasสิทธิ์(item.roles))
+    .filter((item) => hasPermissionิ์(item.roles))
     .map((item) => `
       <button class="nav-link ${activeKey === item.key ? 'active' : ''}" data-nav="${item.key}" type="button" title="${escapeAttr(item.label)}" aria-label="${escapeAttr(item.label)}">
         <span class="nav-icon" aria-hidden="true">${item.icon}</span><span class="nav-label">${escapeHTML(item.label)}</span>
@@ -403,7 +403,7 @@ function renderTopbar(title) {
     <header class="topbar">
       <div>
         <h1>${escapeHTML(title)}</h1>
-        <div class="topbar-meta">อัปเดตล่าสุด: ${state.lastSyncedAt ? formatวันที่Time(state.lastSyncedAt) : '-'}</div>
+        <div class="topbar-meta">อัปเดตล่าสุด: ${state.lastSyncedAt ? formatDateTime(state.lastSyncedAt) : '-'}</div>
       </div>
       <div class="user-chip">
         <span>${escapeHTML(state.profile.display_name || state.profile.email || '')}</span>
@@ -418,8 +418,8 @@ function renderRoute(route) {
   if (route.key === 'dashboard') return renderDashboard()
   if (route.key === 'my-work') return renderMyWork()
   if (route.key === 'leads') return renderLeads()
-  if (route.key === 'accounts') return renderบัญชีs()
-  if (route.key === 'account') return renderบัญชีDetail(route.id)
+  if (route.key === 'accounts') return renderAccounts()
+  if (route.key === 'account') return renderAccountDetail(route.id)
   if (route.key === 'demo') return renderDemo()
   if (route.key === 'customers') return renderCustomers()
   if (route.key === 'tasks') return renderTasks()
@@ -531,7 +531,7 @@ function renderDashboard() {
   const customers = accounts.filter((a) => a.lifecycle_stage === 'customer')
   const lost = accounts.filter((a) => a.lifecycle_stage === 'lost')
   const tasks = state.cache.tasks
-  const overdue = tasks.filter((t) => t.status !== 'done' && t.due_at && new วันที่(t.due_at) < startOfToday())
+  const overdue = tasks.filter((t) => t.status !== 'done' && t.due_at && new Date(t.due_at) < startOfToday())
   const todayTrainings = state.cache.trainings.filter((t) => t.training_date === todayISO())
 
   return `
@@ -576,7 +576,7 @@ function renderMyWork() {
   const accounts = state.cache.accounts
   const tasks = state.cache.tasks.filter((task) => task.assigned_to === state.user.id || isAdmin() || isManager())
   const openTasks = tasks.filter((task) => !['done', 'cancelled'].includes(task.status))
-  const overdue = openTasks.filter((task) => task.due_at && new วันที่(task.due_at) < startOfToday())
+  const overdue = openTasks.filter((task) => task.due_at && new Date(task.due_at) < startOfToday())
   const todayTasks = openTasks.filter((task) => datePart(task.due_at) === todayISO())
   const myLeads = accounts.filter((account) => account.lifecycle_stage === 'lead' && (account.sale_owner_id === state.user.id || isAdmin() || isManager()))
   const demoEndingSoon = state.cache.demos
@@ -608,17 +608,17 @@ function renderMyWork() {
       </div>
       <div class="card">
         <h3>Lead ที่ควรติดตาม</h3>
-        ${renderบัญชีList(myLeads.slice(0, 8))}
+        ${renderAccountList(myLeads.slice(0, 8))}
       </div>
     </div>
 
     <div class="card" style="margin-top:16px">
       <h3>Demo ใกล้หมดอายุ</h3>
       ${simpleRowsTable(['บัญชี', 'สถานะ', 'Start', 'End', ''], demoEndingSoon.map((demo) => [
-        accountTitle(findบัญชี(demo.account_id)),
+        accountTitle(findAccountี(demo.account_id)),
         badge(demo.demo_status || '-'),
-        formatวันที่(demo.start_date),
-        formatวันที่(demo.end_date),
+        formatDateี่(demo.start_date),
+        formatDateี่(demo.end_date),
         `<button class="btn small" type="button" data-nav-account="${demo.account_id}">เปิด</button>`
       ]))}
     </div>
@@ -716,8 +716,8 @@ function renderLeads() {
         <p>Default แสดง Lead ที่ยัง active แต่ข้อมูลที่เปลี่ยนเป็น Demo / Customer / Lost ยังดูต่อได้จาก tab อื่น</p>
       </div>
       <div class="actions">
-        ${hasสิทธิ์([ROLES.ADMIN, ROLES.MKT]) ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ สร้าง MKT Lead</button>` : ''}
-        ${hasสิทธิ์([ROLES.ADMIN, ROLES.SALE]) ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ Sale สร้าง Lead</button>` : ''}
+        ${hasPermissionิ์([ROLES.ADMIN, ROLES.MKT]) ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ สร้าง MKT Lead</button>` : ''}
+        ${hasPermissionิ์([ROLES.ADMIN, ROLES.SALE]) ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ Sale สร้าง Lead</button>` : ''}
       </div>
     </div>
 
@@ -737,15 +737,15 @@ function renderLeads() {
         </div>
         ${renderViewSwitcher('leads')}
       </div>
-      ${renderบัญชีsCollection(leadJourneys, 'leads')}
+      ${renderAccountsCollection(leadJourneys, 'leads')}
     </div>
   `
 }
 
 
 function renderLeadCreatePanel() {
-  const canCreateMkt = hasสิทธิ์([ROLES.ADMIN, ROLES.MKT])
-  const canCreateSale = hasสิทธิ์([ROLES.ADMIN, ROLES.SALE])
+  const canCreateMkt = hasPermissionิ์([ROLES.ADMIN, ROLES.MKT])
+  const canCreateSale = hasPermissionิ์([ROLES.ADMIN, ROLES.SALE])
   if (!canCreateMkt && !canCreateSale) return ''
 
   return `
@@ -759,7 +759,7 @@ function renderLeadCreatePanel() {
 
 function renderMktLeadForm() {
   const today = todayISO()
-  const salesPreview = activeSalesชื่อs()
+  const salesPreview = activeSalesNames()
   return `
     <form class="form-grid modal-form" data-form="create-mkt-lead" novalidate>
       <div class="form-section full">
@@ -837,7 +837,7 @@ function renderSaleLeadForm() {
   `
 }
 
-function renderบัญชีs() {
+function renderAccounts() {
   const accounts = state.cache.accounts
   return `
     <div class="page-header">
@@ -847,12 +847,12 @@ function renderบัญชีs() {
       </div>
       ${renderViewSwitcher('accounts')}
     </div>
-    ${renderบัญชีsCollection(accounts, 'accounts')}
+    ${renderAccountsCollection(accounts, 'accounts')}
   `
 }
 
 function renderDemo() {
-  const demoบัญชีs = state.cache.accounts.filter((a) => a.lifecycle_stage === 'demo')
+  const demoAccounts = state.cache.accounts.filter((a) => a.lifecycle_stage === 'demo')
   return `
     <div class="page-header">
       <div>
@@ -861,7 +861,7 @@ function renderDemo() {
       </div>
       ${renderViewSwitcher('demo')}
     </div>
-    ${renderบัญชีsCollection(demoบัญชีs, 'demo')}
+    ${renderAccountsCollection(demoAccounts, 'demo')}
   `
 }
 
@@ -875,7 +875,7 @@ function renderCustomers() {
       </div>
       ${renderViewSwitcher('customers')}
     </div>
-    ${renderบัญชีsCollection(customers, 'customers')}
+    ${renderAccountsCollection(customers, 'customers')}
   `
 }
 
@@ -913,7 +913,7 @@ function renderTraining() {
 
 function renderReports() {
   const accounts = state.cache.accounts
-  const leadประเภทs = state.cache.leadประเภทs.map((source) => {
+  const leadSources = state.cache.leadSources.map((source) => {
     const count = accounts.filter((a) => a.lead_source_id === source.id).length
     return [source.name, count]
   })
@@ -936,7 +936,7 @@ function renderReports() {
     <div class="grid grid-2">
       <div class="card">
         <h3>Lead by ประเภท</h3>
-        ${simpleRowsTable(['ประเภท', 'Count'], leadประเภทs)}
+        ${simpleRowsTable(['ประเภท', 'Count'], leadSources)}
       </div>
       <div class="card">
         <h3>Sale Performance</h3>
@@ -1031,7 +1031,7 @@ function renderMasterAdmin(config) {
   `
 }
 
-function renderบัญชีDetail(accountId) {
+function renderAccountDetail(accountId) {
   const account = state.cache.accounts.find((item) => item.id === accountId)
   if (!account) {
     return renderNotFound()
@@ -1048,7 +1048,7 @@ function renderบัญชีDetail(accountId) {
   ]
 
   const contentByTab = {
-    overview: `${renderบัญชีOverviewCard(account)}${renderผู้ติดต่อCard(account)}${renderActivitiesCard(account)}`,
+    overview: `${renderAccountOverviewCard(account)}${renderContactsCard(account)}${renderActivitiesCard(account)}`,
     demo: renderDemoCard(account),
     training: renderTrainingCard(account),
     customer: renderCustomerCard(account),
@@ -1081,15 +1081,15 @@ function renderบัญชีDetail(accountId) {
         ${contentByTab[activeTab] || contentByTab.overview}
       </div>
       <aside class="stack sticky-side">
-        ${renderบัญชีActions(account)}
-        ${renderบัญชีMeta(account)}
+        ${renderAccountActions(account)}
+        ${renderAccountMeta(account)}
         ${activeTab !== 'history' ? renderHistoryCard(account) : ''}
       </aside>
     </div>
   `
 }
 
-function renderบัญชีOverviewCard(account) {
+function renderAccountOverviewCard(account) {
   return `
     <div class="card">
       <div class="section-head">
@@ -1101,21 +1101,21 @@ function renderบัญชีOverviewCard(account) {
         <div class="meta-label">ชื่อย่อ</div><div>${escapeHTML(account.short_name || '-')}</div>
         <div class="meta-label">เลขผู้เสียภาษี</div><div>${escapeHTML(account.tax_id || '-')}</div>
         <div class="meta-label">จำนวนรถ</div><div>${escapeHTML(String(account.cars_estimate || '-'))}</div>
-        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterชื่อ('leadChannels', account.lead_channel_id))}</div>
-        <div class="meta-label">แหล่งที่มา</div><div>${escapeHTML(masterชื่อ('leadประเภทs', account.lead_source_id))}</div>
-        <div class="meta-label">แคมเปญ</div><div>${escapeHTML(masterชื่อ('campaigns', account.campaign_id))}</div>
-        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterชื่อ('businessTypes', account.business_type_id))}</div>
+        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterName('leadChannels', account.lead_channel_id))}</div>
+        <div class="meta-label">แหล่งที่มา</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
+        <div class="meta-label">แคมเปญ</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
+        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterName('businessTypes', account.business_type_id))}</div>
         <div class="meta-label">GPS ปัจจุบัน</div><div>${escapeHTML(account.current_gps_provider || '-')}</div>
         <div class="meta-label">ที่อยู่</div><div>${escapeHTML(account.address || '-')}</div>
-        <div class="meta-label">สถานะการติดต่อ</div><div>${escapeHTML(masterชื่อ('contactสถานะes', account.contact_status_id))}</div>
-        <div class="meta-label">สินค้า</div><div>${escapeHTML(accountModuleชื่อs(account.id).join(', ') || '-')}</div>
+        <div class="meta-label">สถานะการติดต่อ</div><div>${escapeHTML(masterName('contactStatuses', account.contact_status_id))}</div>
+        <div class="meta-label">สินค้า</div><div>${escapeHTML(accountModuleNames(account.id).join(', ') || '-')}</div>
         <div class="meta-label">รายละเอียด</div><div>${escapeHTML(account.product_interest || account.initial_note || '-')}</div>
       </div>
     </div>
   `
 }
 
-function renderบัญชีOverviewForm(account) {
+function renderAccountOverviewForm(account) {
   const disabled = isReadOnly() ? 'disabled' : ''
   return `
     <form class="card" data-form="account-overview" data-account-id="${account.id}">
@@ -1126,10 +1126,10 @@ function renderบัญชีOverviewForm(account) {
         ${inputField('tax_id', 'เลขผู้เสียภาษี', 'text', false, account.tax_id || '', disabled)}
         ${inputField('cars_estimate', 'จำนวนรถ', 'number', false, account.cars_estimate || '', disabled)}
         ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', false, account.lead_channel_id || '', disabled)}
-        ${selectField('lead_source_id', 'แหล่งที่มา Lead', state.cache.leadประเภทs, 'id', 'name', false, account.lead_source_id || '', disabled)}
+        ${selectField('lead_source_id', 'แหล่งที่มา Lead', state.cache.leadSources, 'id', 'name', false, account.lead_source_id || '', disabled)}
         ${selectField('campaign_id', 'แคมเปญ', state.cache.campaigns, 'id', 'name', false, account.campaign_id || '', disabled)}
         ${selectField('business_type_id', 'ธุรกิจ', state.cache.businessTypes, 'id', 'name', false, account.business_type_id || '', disabled)}
-        ${selectField('contact_status_id', 'สถานะการติดต่อ', state.cache.contactสถานะes, 'id', 'name', false, account.contact_status_id || '', disabled)}
+        ${selectField('contact_status_id', 'สถานะการติดต่อ', state.cache.contactStatuses, 'id', 'name', false, account.contact_status_id || '', disabled)}
         ${inputField('current_gps_provider', 'GPS ปัจจุบัน', 'text', false, account.current_gps_provider || '', disabled)}
         <div class="field full" data-field="address">
           <label>ที่อยู่</label>
@@ -1150,7 +1150,7 @@ function renderบัญชีOverviewForm(account) {
 }
 
 
-function renderผู้ติดต่อCard(account) {
+function renderContactsCard(account) {
   const contacts = state.cache.contacts.filter((c) => c.account_id === account.id)
   const rows = contacts.map((c) => `
     <tr>
@@ -1188,10 +1188,10 @@ function renderActivitiesCard(account) {
     <div class="list-item">
       <div class="list-title">
         <span>${escapeHTML(activity.title || activity.activity_type || 'หมายเหตุ')}</span>
-        <span class="muted">${formatวันที่Time(activity.created_at)}</span>
+        <span class="muted">${formatDateTime(activity.created_at)}</span>
       </div>
       <div class="list-meta">${escapeHTML(activity.content || '')}</div>
-      ${activity.next_follow_up_at ? `<div>${badge('ติดตามต่อ: ' + formatวันที่Time(activity.next_follow_up_at))}</div>` : ''}
+      ${activity.next_follow_up_at ? `<div>${badge('ติดตามต่อ: ' + formatDateTime(activity.next_follow_up_at))}</div>` : ''}
     </div>
   `).join('')
 
@@ -1212,8 +1212,8 @@ function renderDemoCard(account) {
   const demoRows = demos.map((demo) => `
     <tr>
       <td>${badge(demo.demo_status || '-')}</td>
-      <td>${formatวันที่(demo.start_date)}</td>
-      <td>${formatวันที่(demo.end_date)}</td>
+      <td>${formatDateี่(demo.start_date)}</td>
+      <td>${formatDateี่(demo.end_date)}</td>
       <td>${escapeHTML(demo.demo_result || '-')}</td>
       <td><button class="btn small" type="button" data-open-modal="edit-demo" data-demo-id="${demo.id}">Edit</button></td>
     </tr>
@@ -1244,7 +1244,7 @@ function renderDemoDetail(demo) {
   return `
     <div class="card compact subcard">
       <div class="section-head">
-        <h3>Demo Detail: ${formatวันที่(demo.start_date)} - ${formatวันที่(demo.end_date)}</h3>
+        <h3>Demo Detail: ${formatDateี่(demo.start_date)} - ${formatDateี่(demo.end_date)}</h3>
         <div class="actions">
           ${!isReadOnly() ? `<button class="btn small" type="button" data-open-modal="edit-demo" data-demo-id="${demo.id}">แก้ไขเดโม</button>` : ''}
           ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-demo-user" data-demo-id="${demo.id}" data-account-id="${demo.account_id}">+ Demo User</button>` : ''}
@@ -1261,7 +1261,7 @@ function renderDemoDetail(demo) {
       ${simpleRowsTable(['อีเมล', 'ชื่อ', 'รหัสผ่าน'], users.map((u) => [u.user_email || '-', u.user_name || '-', u.demo_password || '-']))}
 
       <h3 style="margin-top:14px">Demo Logs</h3>
-      <div class="list-view">${logs.map((log) => `<div class="list-item"><div class="list-title">${escapeHTML(log.log_type || 'log')}<span class="muted">${formatวันที่Time(log.created_at)}</span></div><div class="list-meta">${escapeHTML(log.message || '')}</div></div>`).join('') || '<div class="empty">ยังไม่มี log</div>'}</div>
+      <div class="list-view">${logs.map((log) => `<div class="list-item"><div class="list-title">${escapeHTML(log.log_type || 'log')}<span class="muted">${formatDateTime(log.created_at)}</span></div><div class="list-meta">${escapeHTML(log.message || '')}</div></div>`).join('') || '<div class="empty">ยังไม่มี log</div>'}</div>
     </div>
   `
 }
@@ -1288,7 +1288,7 @@ function renderTrainingCard(account) {
   const rows = trainings.map((t) => [
     `#${t.session_no || '-'}`,
     t.training_phase || '-',
-    formatวันที่(t.training_date),
+    formatDateี่(t.training_date),
     displayUser(t.trainer_id),
     t.status || '-',
     `<button class="btn small" type="button" data-nav="training">View</button>`
@@ -1311,8 +1311,8 @@ function renderTrainingSessionDetail(account, training) {
   const participants = state.cache.trainingParticipants.filter((p) => p.training_session_id === training.id)
   const participantRows = participants.map((p) => [
     p.participant_type || '-',
-    p.participant_type === 'internal' ? displayUser(p.profile_id) : (p.name_snapshot || contactชื่อ(p.contact_id)),
-    p.email_snapshot || contactอีเมล(p.contact_id) || '-',
+    p.participant_type === 'internal' ? displayUser(p.profile_id) : (p.name_snapshot || contactName(p.contact_id)),
+    p.email_snapshot || contactEmail(p.contact_id) || '-',
     p.role_note || '-'
   ])
 
@@ -1373,8 +1373,8 @@ function renderCustomerCard(account) {
         <div class="meta-label">ผู้รับผิดชอบ</div><div>${escapeHTML(displayUser(customer.owner_id))}</div>
         <div class="meta-label">จำนวนรถ</div><div>${escapeHTML(String(customer.cars || account.cars_estimate || '-'))}</div>
         <div class="meta-label">การใช้งาน</div><div>${escapeHTML(customer.functions || '-')}</div>
-        <div class="meta-label">Start</div><div>${formatวันที่(customer.start_date)}</div>
-        <div class="meta-label">รอบบิล</div><div>${formatวันที่(customer.billing_date)}</div>
+        <div class="meta-label">Start</div><div>${formatDateี่(customer.start_date)}</div>
+        <div class="meta-label">รอบบิล</div><div>${formatDateี่(customer.billing_date)}</div>
         <div class="meta-label">ระดับการใช้งาน</div><div>${badge(customer.engagement_level || '-')}</div>
         <div class="meta-label">สถานะ</div><div>${badge(customer.customer_status || '-')}</div>
         <div class="meta-label">หมายเหตุ</div><div>${escapeHTML(customer.note || '-')}</div>
@@ -1422,8 +1422,8 @@ function renderTaskList(tasks, compact) {
         <span>${badge(task.status || 'open')} ${badge(task.priority || 'medium')}</span>
       </div>
       <div class="list-meta">
-        บัญชี: ${escapeHTML(accountTitle(findบัญชี(task.account_id)))}<br>
-        ผู้รับผิดชอบ: ${escapeHTML(displayUser(task.assigned_to))} · กำหนด: ${formatวันที่Time(task.due_at)}
+        บัญชี: ${escapeHTML(accountTitle(findAccountี(task.account_id)))}<br>
+        ผู้รับผิดชอบ: ${escapeHTML(displayUser(task.assigned_to))} · กำหนด: ${formatDateTime(task.due_at)}
       </div>
       ${compact ? '' : `<div class="actions"><button class="btn small" type="button" data-action="mark-task-done" data-id="${task.id}">Done</button><button class="btn small" type="button" data-nav-account="${task.account_id}">เปิด บัญชี</button></div>`}
     </div>
@@ -1432,7 +1432,7 @@ function renderTaskList(tasks, compact) {
 }
 
 
-function renderบัญชีActions(account) {
+function renderAccountActions(account) {
   if (isReadOnly()) return ''
   const canConvert = account.lifecycle_stage !== 'customer' && account.lifecycle_stage !== 'lost'
   const canLost = account.lifecycle_stage !== 'lost'
@@ -1459,9 +1459,9 @@ function renderLostForm(account) {
   `
 }
 
-function renderบัญชีMeta(account) {
+function renderAccountMeta(account) {
   const contacts = state.cache.contacts.filter((c) => c.account_id === account.id)
-  const csผู้รับผิดชอบs = state.cache.accountCsผู้รับผิดชอบs.filter((o) => o.account_id === account.id).map((o) => displayUser(o.cs_user_id)).join(', ') || '-'
+  const csOwners = state.cache.accountCsOwners.filter((o) => o.account_id === account.id).map((o) => displayUser(o.cs_user_id)).join(', ') || '-'
   return `
     <div class="card">
       <h3>Meta</h3>
@@ -1469,14 +1469,14 @@ function renderบัญชีMeta(account) {
         <div class="meta-label">เลข MKT</div><div>${renderRunningNo(account)}</div>
         <div class="meta-label">ประเภท</div><div>${escapeHTML(account.source_type || '-')}</div>
         <div class="meta-label">Sale ผู้รับผิดชอบ</div><div>${escapeHTML(displayUser(account.sale_owner_id))}</div>
-        <div class="meta-label">CS ผู้รับผิดชอบs</div><div>${escapeHTML(csผู้รับผิดชอบs)}</div>
-        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterชื่อ('leadChannels', account.lead_channel_id))}</div>
-        <div class="meta-label">แหล่งที่มา</div><div>${escapeHTML(masterชื่อ('leadประเภทs', account.lead_source_id))}</div>
-        <div class="meta-label">แคมเปญ</div><div>${escapeHTML(masterชื่อ('campaigns', account.campaign_id))}</div>
-        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterชื่อ('businessTypes', account.business_type_id))}</div>
+        <div class="meta-label">CS ผู้รับผิดชอบs</div><div>${escapeHTML(csOwners)}</div>
+        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterName('leadChannels', account.lead_channel_id))}</div>
+        <div class="meta-label">แหล่งที่มา</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
+        <div class="meta-label">แคมเปญ</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
+        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterName('businessTypes', account.business_type_id))}</div>
         <div class="meta-label">ผู้ติดต่อ</div><div>${contacts.length}</div>
-        <div class="meta-label">สร้างเมื่อ</div><div>${formatวันที่Time(account.created_at)}</div>
-        <div class="meta-label">อัปเดต</div><div>${formatวันที่Time(account.updated_at)}</div>
+        <div class="meta-label">สร้างเมื่อ</div><div>${formatDateTime(account.created_at)}</div>
+        <div class="meta-label">อัปเดต</div><div>${formatDateTime(account.updated_at)}</div>
       </div>
     </div>
   `
@@ -1486,7 +1486,7 @@ function renderHistoryCard(account) {
   const rows = state.cache.statusHistory
     .filter((h) => h.account_id === account.id)
     .slice(0, 12)
-    .map((h) => [formatวันที่Time(h.created_at), `${h.from_stage || '-'} → ${h.to_stage || '-'}`, displayUser(h.changed_by), h.reason || '-'])
+    .map((h) => [formatDateTime(h.created_at), `${h.from_stage || '-'} → ${h.to_stage || '-'}`, displayUser(h.changed_by), h.reason || '-'])
   return `
     <div class="card">
       <h3>สถานะ History</h3>
@@ -1505,15 +1505,15 @@ function renderViewSwitcher(key) {
   `
 }
 
-function renderบัญชีsCollection(items, key) {
+function renderAccountsCollection(items, key) {
   const prepared = prepareCollection(items, key, 'accounts')
   const mode = state.viewModes[key] || 'table'
   let body = ''
-  if (mode === 'board') body = renderบัญชีBoard(prepared.items, key)
-  else if (mode === 'calendar') body = renderบัญชีCalendar(prepared.items)
-  else if (mode === 'list') body = renderบัญชีList(prepared.items)
-  else if (mode === 'timeline') body = renderบัญชีTimeline(prepared.items)
-  else body = renderบัญชีTable(prepared.items)
+  if (mode === 'board') body = renderAccountBoard(prepared.items, key)
+  else if (mode === 'calendar') body = renderAccountCalendar(prepared.items)
+  else if (mode === 'list') body = renderAccountList(prepared.items)
+  else if (mode === 'timeline') body = renderAccountTimeline(prepared.items)
+  else body = renderAccountTable(prepared.items)
 
   return `
     ${renderCollectionToolbar(key, 'accounts', items.length, prepared.total)}
@@ -1543,8 +1543,8 @@ function renderTrainingCollection(items, key) {
   const prepared = prepareCollection(items, key, 'training')
   const mode = state.viewModes[key] || 'calendar'
   let body = ''
-  if (mode === 'calendar') body = renderCalendarEvents(prepared.items.map((t) => ({ date: t.training_date, title: `Training #${t.session_no}: ${accountTitle(findบัญชี(t.account_id))}`, accountId: t.account_id })))
-  else if (mode === 'timeline') body = renderTimelineEvents(prepared.items.map((t) => ({ title: `Training #${t.session_no}: ${accountTitle(findบัญชี(t.account_id))}`, start: t.training_date, end: t.training_date, accountId: t.account_id })))
+  if (mode === 'calendar') body = renderCalendarEvents(prepared.items.map((t) => ({ date: t.training_date, title: `Training #${t.session_no}: ${accountTitle(findAccountี(t.account_id))}`, accountId: t.account_id })))
+  else if (mode === 'timeline') body = renderTimelineEvents(prepared.items.map((t) => ({ title: `Training #${t.session_no}: ${accountTitle(findAccountี(t.account_id))}`, start: t.training_date, end: t.training_date, accountId: t.account_id })))
   else if (mode === 'board') body = renderTrainingBoard(prepared.items)
   else if (mode === 'list') body = renderTrainingList(prepared.items)
   else body = renderTrainingTable(prepared.items)
@@ -1572,7 +1572,7 @@ function renderCollectionToolbar(key, type, rawTotal, filteredTotal) {
       </div>
       <div class="filter-row secondary">
         ${type === 'accounts' ? selectFilter(key, 'channel', 'ช่องทาง', [['', 'ทุกช่องทาง']].concat(state.cache.leadChannels.map((r) => [r.id, r.name])), filter.channel || '') : ''}
-        ${type === 'accounts' ? selectFilter(key, 'source', 'แหล่งที่มา', [['', 'ทุกแหล่ง']].concat(state.cache.leadประเภทs.map((r) => [r.id, r.name])), filter.source || '') : ''}
+        ${type === 'accounts' ? selectFilter(key, 'source', 'แหล่งที่มา', [['', 'ทุกแหล่ง']].concat(state.cache.leadSources.map((r) => [r.id, r.name])), filter.source || '') : ''}
         ${type === 'accounts' ? selectFilter(key, 'campaign', 'แคมเปญ', [['', 'ทุกแคมเปญ']].concat(state.cache.campaigns.map((r) => [r.id, r.name])), filter.campaign || '') : ''}
         ${type === 'accounts' ? selectFilter(key, 'businessType', 'ธุรกิจ', [['', 'ทุกธุรกิจ']].concat(state.cache.businessTypes.map((r) => [r.id, r.name])), filter.businessType || '') : ''}
         ${type === 'tasks' ? selectFilter(key, 'priority', 'ความสำคัญ', [['', 'ทุก ความสำคัญ'], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['urgent', 'urgent']], filter.priority || '') : ''}
@@ -1669,7 +1669,7 @@ function filterCollection(items, filter, type) {
 }
 
 function matchesSearch(item, q, type) {
-  const account = type === 'tasks' || type === 'training' ? findบัญชี(item.account_id) : item
+  const account = type === 'tasks' || type === 'training' ? findAccountี(item.account_id) : item
   const contacts = account?.id ? state.cache.contacts.filter((c) => c.account_id === account.id) : []
   const haystack = [
     account?.running_no,
@@ -1678,8 +1678,8 @@ function matchesSearch(item, q, type) {
     account?.tax_id,
     account?.address,
     account?.current_gps_provider,
-    masterชื่อ('leadChannels', account?.lead_channel_id),
-    masterชื่อ('businessTypes', account?.business_type_id),
+    masterName('leadChannels', account?.lead_channel_id),
+    masterName('businessTypes', account?.business_type_id),
     account?.initial_note,
     account?.product_interest,
     item.title,
@@ -1720,7 +1720,7 @@ function renderPagination(key, prepared) {
   `
 }
 
-function renderบัญชีTable(items) {
+function renderAccountTable(items) {
   if (!items.length) return emptyState('ไม่พบข้อมูล', 'ลองเปลี่ยนคำค้นหา หรือล้าง filter เพื่อดูรายการทั้งหมด')
   const rows = items.map((a) => `
     <tr>
@@ -1729,11 +1729,11 @@ function renderบัญชีTable(items) {
       <td>${badge(a.lifecycle_stage)}</td>
       <td>${badge(a.lifecycle_status || '-')}</td>
       <td>${escapeHTML(displayUser(a.sale_owner_id))}</td>
-      <td>${escapeHTML(masterชื่อ('leadChannels', a.lead_channel_id))}</td>
-      <td>${escapeHTML(masterชื่อ('campaigns', a.campaign_id))}</td>
-      <td>${escapeHTML(masterชื่อ('businessTypes', a.business_type_id))}</td>
+      <td>${escapeHTML(masterName('leadChannels', a.lead_channel_id))}</td>
+      <td>${escapeHTML(masterName('campaigns', a.campaign_id))}</td>
+      <td>${escapeHTML(masterName('businessTypes', a.business_type_id))}</td>
       <td>${escapeHTML(String(a.cars_estimate || '-'))}</td>
-      <td>${formatวันที่Time(a.updated_at)}</td>
+      <td>${formatDateTime(a.updated_at)}</td>
     </tr>
   `).join('')
 
@@ -1749,7 +1749,7 @@ function renderบัญชีTable(items) {
   `
 }
 
-function renderบัญชีList(items) {
+function renderAccountList(items) {
   if (!items.length) return emptyState('ไม่พบข้อมูล', 'ยังไม่มีรายการที่ตรงกับเงื่อนไขนี้')
   return `
     <div class="list-view">
@@ -1761,7 +1761,7 @@ function renderบัญชีList(items) {
           </div>
           <div class="list-meta">
             ${renderRunningNo(a)} · Sale: ${escapeHTML(displayUser(a.sale_owner_id))} · จำนวนรถ: ${escapeHTML(String(a.cars_estimate || '-'))}<br>
-            ช่องทาง: ${escapeHTML(masterชื่อ('leadChannels', a.lead_channel_id))} · แคมเปญ: ${escapeHTML(masterชื่อ('campaigns', a.campaign_id))} · ธุรกิจ: ${escapeHTML(masterชื่อ('businessTypes', a.business_type_id))}
+            ช่องทาง: ${escapeHTML(masterName('leadChannels', a.lead_channel_id))} · แคมเปญ: ${escapeHTML(masterName('campaigns', a.campaign_id))} · ธุรกิจ: ${escapeHTML(masterName('businessTypes', a.business_type_id))}
           </div>
           <div class="actions"><button class="btn small" type="button" data-nav-account="${a.id}">เปิด</button></div>
         </div>
@@ -1770,7 +1770,7 @@ function renderบัญชีList(items) {
   `
 }
 
-function renderบัญชีBoard(items, key) {
+function renderAccountBoard(items, key) {
   const groupBy = key === 'tasks' ? 'status' : 'lifecycle_stage'
   const groups = groupRows(items, groupBy)
   const preferred = key === 'demo' ? ['demo'] : ['lead', 'demo', 'customer', 'lost']
@@ -1795,7 +1795,7 @@ function renderบัญชีBoard(items, key) {
   `
 }
 
-function renderบัญชีCalendar(items) {
+function renderAccountCalendar(items) {
   const events = []
   items.forEach((account) => {
     state.cache.demos.filter((d) => d.account_id === account.id).forEach((demo) => {
@@ -1808,7 +1808,7 @@ function renderบัญชีCalendar(items) {
   return renderCalendarEvents(events)
 }
 
-function renderบัญชีTimeline(items) {
+function renderAccountTimeline(items) {
   const rows = []
   items.forEach((account) => {
     state.cache.demos.filter((d) => d.account_id === account.id).forEach((demo) => {
@@ -1833,7 +1833,7 @@ function renderTaskBoard(items) {
           ${(groups[group] || []).map((task) => `
             <div class="board-card">
               <strong>${escapeHTML(task.title || '-')}</strong>
-              <div class="list-meta">${escapeHTML(accountTitle(findบัญชี(task.account_id)))}<br>กำหนด: ${formatวันที่Time(task.due_at)}</div>
+              <div class="list-meta">${escapeHTML(accountTitle(findAccountี(task.account_id)))}<br>กำหนด: ${formatDateTime(task.due_at)}</div>
               <div style="margin-top:8px">${badge(task.priority || 'medium')}</div>
               <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-action="mark-task-done" data-id="${task.id}">Done</button><button class="btn small" type="button" data-nav-account="${task.account_id}">เปิด</button></div>
             </div>
@@ -1849,11 +1849,11 @@ function renderTaskTable(items) {
   const rows = items.map((task) => `
     <tr>
       <td>${escapeHTML(task.title || '-')}</td>
-      <td>${escapeHTML(accountTitle(findบัญชี(task.account_id)))}</td>
+      <td>${escapeHTML(accountTitle(findAccountี(task.account_id)))}</td>
       <td>${badge(task.status || 'open')}</td>
       <td>${badge(task.priority || 'medium')}</td>
       <td>${escapeHTML(displayUser(task.assigned_to))}</td>
-      <td>${formatวันที่Time(task.due_at)}</td>
+      <td>${formatDateTime(task.due_at)}</td>
       <td><button class="btn small" type="button" data-nav-account="${task.account_id}">เปิด</button></td>
     </tr>
   `).join('')
@@ -1874,8 +1874,8 @@ function renderTrainingList(items) {
 function renderTrainingCardItem(t) {
   return `
     <div class="board-card">
-      <strong>#${t.session_no || '-'} ${escapeHTML(accountTitle(findบัญชี(t.account_id)))}</strong>
-      <div class="list-meta">${escapeHTML(t.training_phase || '-')} · ${formatวันที่(t.training_date)} · ผู้สอน: ${escapeHTML(displayUser(t.trainer_id))}</div>
+      <strong>#${t.session_no || '-'} ${escapeHTML(accountTitle(findAccountี(t.account_id)))}</strong>
+      <div class="list-meta">${escapeHTML(t.training_phase || '-')} · ${formatDateี่(t.training_date)} · ผู้สอน: ${escapeHTML(displayUser(t.trainer_id))}</div>
       <div style="margin-top:8px">${badge(t.status || '-')}</div>
       <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${t.account_id}">เปิด</button></div>
     </div>
@@ -1887,9 +1887,9 @@ function renderTrainingTable(items) {
   const rows = items.map((t) => `
     <tr>
       <td>#${t.session_no || '-'}</td>
-      <td>${escapeHTML(accountTitle(findบัญชี(t.account_id)))}</td>
+      <td>${escapeHTML(accountTitle(findAccountี(t.account_id)))}</td>
       <td>${escapeHTML(t.training_phase || '-')}</td>
-      <td>${formatวันที่(t.training_date)}</td>
+      <td>${formatDateี่(t.training_date)}</td>
       <td>${escapeHTML(displayUser(t.trainer_id))}</td>
       <td>${badge(t.status || '-')}</td>
       <td><button class="btn small" type="button" data-nav-account="${t.account_id}">เปิด</button></td>
@@ -1906,7 +1906,7 @@ function renderCalendarEvents(events) {
     <div class="calendar">
       ${Object.keys(groups).sort().map((date) => `
         <div class="calendar-day">
-          <div class="calendar-date">${formatวันที่(date)}</div>
+          <div class="calendar-date">${formatDateี่(date)}</div>
           <div class="list-view">
             ${groups[date].map((event) => `<div class="list-item"><div class="list-title">${escapeHTML(event.title || '-')}</div><div class="actions"><button class="btn small" type="button" data-nav-account="${event.accountId}">เปิด</button></div></div>`).join('')}
           </div>
@@ -1925,7 +1925,7 @@ function renderTimelineEvents(rows) {
         <div class="timeline-row">
           <div class="list-title">
             <span>${escapeHTML(row.title || '-')}</span>
-            <span class="muted">${formatวันที่(row.start)} → ${formatวันที่(row.end)}</span>
+            <span class="muted">${formatDateี่(row.start)} → ${formatDateี่(row.end)}</span>
           </div>
           <div class="timeline-track"><div class="timeline-bar" style="width:${timelineWidth(row.start, row.end)}%"></div></div>
           <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${row.accountId}">เปิด</button></div>
@@ -1952,7 +1952,7 @@ function renderAddContactForm(account) {
   `
 }
 
-function renderAddบันทึกForm(account) {
+function renderAddNoteForm(account) {
   return `
     <form class="form-grid" data-form="add-activity" data-account-id="${account.id}" novalidate>
       ${selectStaticField('activity_type', 'Type', ['note', 'call', 'follow_up', 'mkt_update', 'sale_update', 'cs_update'], false)}
@@ -2079,7 +2079,7 @@ function modalTitle(modal) {
 }
 
 function modalSubtitle(modal) {
-  const account = modal.accountId ? findบัญชี(modal.accountId) : null
+  const account = modal.accountId ? findAccountี(modal.accountId) : null
   if (account) return accountTitle(account)
   if (modal.type === 'create-mkt-lead') return 'ระบบจะออก เลข MKT และ assign Sale แบบ round-robin'
   if (modal.type === 'create-sales-lead') return 'Lead นี้จะไม่มี เลข MKT และ owner คือ Sale ที่สร้าง'
@@ -2087,11 +2087,11 @@ function modalSubtitle(modal) {
 }
 
 function modalContent(modal) {
-  const account = modal.accountId ? findบัญชี(modal.accountId) : null
+  const account = modal.accountId ? findAccountี(modal.accountId) : null
   if (modal.type === 'create-mkt-lead') return renderMktLeadForm()
   if (modal.type === 'create-sales-lead') return renderSaleLeadForm()
   if (modal.type === 'add-contact' && account) return renderAddContactForm(account)
-  if (modal.type === 'add-activity' && account) return renderAddบันทึกForm(account)
+  if (modal.type === 'add-activity' && account) return renderAddNoteForm(account)
   if (modal.type === 'request-demo' && account) return renderRequestDemoForm(account)
   if (modal.type === 'edit-demo') {
     const demo = state.cache.demos.find((item) => item.id === modal.demoId)
@@ -2103,13 +2103,13 @@ function modalContent(modal) {
   if (modal.type === 'add-training' && account) return renderTrainingForm(account)
   if (modal.type === 'add-training-participant') {
     const training = state.cache.trainings.find((item) => item.id === modal.trainingId)
-    return training ? renderAddTrainingParticipantForm(training, account || findบัญชี(training.account_id)) : emptyState('ไม่พบ Training', 'ไม่สามารถเพิ่มผู้เข้าร่วมได้')
+    return training ? renderAddTrainingParticipantForm(training, account || findAccountี(training.account_id)) : emptyState('ไม่พบ Training', 'ไม่สามารถเพิ่มผู้เข้าร่วมได้')
   }
   if (modal.type === 'customer-profile' && account) return renderCustomerProfileForm(account)
   if (modal.type === 'add-task' && account) return renderTaskForm(account)
   if (modal.type === 'mark-lost' && account) return renderLostForm(account)
   if (modal.type === 'create-master') return renderCreateMasterForm(modal.table, modal.nameField)
-  if (modal.type === 'account-overview' && account) return renderบัญชีOverviewForm(account)
+  if (modal.type === 'account-overview' && account) return renderAccountOverviewForm(account)
   return emptyState('ไม่พบข้อมูล', 'กรุณาปิด modal แล้วลองใหม่')
 }
 
@@ -2151,9 +2151,9 @@ async function onClick(event) {
     return
   }
 
-  const navบัญชี = event.target.closest('[data-nav-account]')
-  if (navบัญชี) {
-    location.hash = `#/account/${navบัญชี.dataset.navบัญชี}`
+  const navAccount = event.target.closest('[data-nav-account]')
+  if (navAccount) {
+    location.hash = `#/account/${navAccount.dataset.navAccount}`
     return
   }
 
@@ -2234,9 +2234,9 @@ async function onSubmit(event) {
     if (type === 'login') await login(form)
     if (type === 'create-mkt-lead') await createMktLead(form)
     if (type === 'create-sales-lead') await createSalesLead(form)
-    if (type === 'account-overview') await saveบัญชีOverview(form)
+    if (type === 'account-overview') await saveAccountOverview(form)
     if (type === 'add-contact') await addContact(form)
-    if (type === 'add-activity') await addบันทึก(form)
+    if (type === 'add-activity') await addNote(form)
     if (type === 'request-demo') await requestDemo(form)
     if (type === 'update-demo') await updateDemo(form)
     if (type === 'add-demo-user') await addDemoUser(form)
@@ -2269,7 +2269,7 @@ function onChange(event) {
   if (target.matches('[data-filter-control]') && target.type !== 'search') {
     const filter = getFilter(target.dataset.filterKey)
     const value = target.value
-    filter[target.dataset.filterชื่อ] = target.dataset.filterชื่อ === 'pageSize' ? Number(value) : value
+    filter[target.dataset.filterName] = target.dataset.filterName === 'pageSize' ? Number(value) : value
     filter.page = 1
     render()
   }
@@ -2279,7 +2279,7 @@ function onInput(event) {
   const target = event.target
   if (!target.matches('[data-filter-control][type="search"]')) return
   const filter = getFilter(target.dataset.filterKey)
-  filter[target.dataset.filterชื่อ] = target.value
+  filter[target.dataset.filterName] = target.value
   filter.page = 1
   window.clearTimeout(filterTimer)
   filterTimer = window.setTimeout(() => render(), 300)
@@ -2290,7 +2290,7 @@ async function login(form) {
   if (!nullIfBlank(values.email) || !nullIfBlank(values.password)) {
     throw createValidationError('กรุณากรอกอีเมลและรหัสผ่าน', ['email', 'password'])
   }
-  const { error } = await state.client.auth.signInWithรหัสผ่าน({
+  const { error } = await state.client.auth.signInWithPassword({
     email: values.email,
     password: values.password
   })
@@ -2395,14 +2395,14 @@ function ensureLeadMinimum(values) {
   }
 }
 
-function ensureRequired(values, fieldชื่อ, message, fieldชื่อs = [fieldชื่อ]) {
-  if (!String(values[fieldชื่อ] || '').trim()) {
-    throw createValidationError(message, fieldชื่อs)
+function ensureRequired(values, fieldName, message, fieldNames = [fieldName]) {
+  if (!String(values[fieldName] || '').trim()) {
+    throw createValidationError(message, fieldNames)
   }
 }
 
 
-async function saveบัญชีOverview(form) {
+async function saveAccountOverview(form) {
   const accountId = form.dataset.accountId
   const values = formValues(form)
   const payload = {
@@ -2423,16 +2423,16 @@ async function saveบัญชีOverview(form) {
   const { error } = await state.client.from(TABLES.accounts).update(payload).eq('id', accountId)
   if (error) throw error
 
-  await replaceบัญชีสินค้า(accountId, values.module_ids || [], 'interested')
+  await replaceAccountModules(accountId, values.module_ids || [], 'interested')
   await refreshData()
   toast('บันทึก บัญชี สำเร็จ', 'success')
 }
 
-async function replaceบัญชีสินค้า(accountId, moduleIds, moduleType) {
-  const existing = state.cache.accountสินค้า.filter((row) => row.account_id === accountId && row.module_type === moduleType)
+async function replaceAccountModules(accountId, moduleIds, moduleType) {
+  const existing = state.cache.accountModules.filter((row) => row.account_id === accountId && row.module_type === moduleType)
   if (existing.length) {
     const { error } = await state.client
-      .from(TABLES.accountสินค้า)
+      .from(TABLES.accountModules)
       .delete()
       .in('id', existing.map((row) => row.id))
     if (error) throw error
@@ -2440,7 +2440,7 @@ async function replaceบัญชีสินค้า(accountId, moduleIds, mo
 
   if (moduleIds.length) {
     const rows = moduleIds.map((moduleId) => ({ account_id: accountId, module_id: moduleId, module_type: moduleType }))
-    const { error } = await state.client.from(TABLES.accountสินค้า).insert(rows)
+    const { error } = await state.client.from(TABLES.accountModules).insert(rows)
     if (error) throw error
   }
 }
@@ -2467,7 +2467,7 @@ async function addContact(form) {
   toast('เพิ่ม Contact สำเร็จ', 'success')
 }
 
-async function addบันทึก(form) {
+async function addNote(form) {
   const values = formValues(form)
   const payload = {
     account_id: form.dataset.accountId,
@@ -2676,7 +2676,7 @@ async function convertCustomer(accountId) {
 
   const existing = state.cache.customers.find((c) => c.account_id === accountId)
   if (!existing) {
-    const account = findบัญชี(accountId)
+    const account = findAccountี(accountId)
     const { error: insertError } = await state.client.from(TABLES.customers).insert({
       account_id: accountId,
       owner_id: state.profile.role === ROLES.CS ? state.user.id : null,
@@ -2698,7 +2698,7 @@ async function markTaskDone(taskId) {
   if (!window.confirm('ยืนยันปิด Task นี้เป็น Done?')) return
   const { error } = await state.client.from(TABLES.tasks).update({
     status: 'done',
-    completed_at: new วันที่().toISOString()
+    completed_at: new Date().toISOString()
   }).eq('id', taskId)
   if (error) {
     toast(error.message, 'error')
@@ -2753,7 +2753,7 @@ function showLostForm(accountId) {
   if (form) form.style.display = form.style.display === 'none' ? 'grid' : 'none'
 }
 
-function findบัญชี(accountId) {
+function findAccountี(accountId) {
   return state.cache.accounts.find((a) => a.id === accountId) || null
 }
 
@@ -2770,12 +2770,12 @@ function renderRunningNo(account) {
 }
 
 function accountModuleIds(accountId) {
-  return state.cache.accountสินค้า
+  return state.cache.accountModules
     .filter((row) => row.account_id === accountId && ['interested', 'demo', 'subscribed'].includes(row.module_type))
     .map((row) => row.module_id)
 }
 
-function masterชื่อ(cacheKey, id) {
+function masterName(cacheKey, id) {
   if (!id) return '-'
   const table = state.cache[cacheKey] || []
   const row = table.find((item) => item.id === id)
@@ -2788,13 +2788,13 @@ function displayUser(id) {
   return profile?.display_name || profile?.email || String(id).slice(0, 8)
 }
 
-function contactชื่อ(contactId) {
+function contactName(contactId) {
   if (!contactId) return '-'
   const contact = state.cache.contacts.find((c) => c.id === contactId)
   return contact?.contact_name || '-'
 }
 
-function contactอีเมล(contactId) {
+function contactEmail(contactId) {
   if (!contactId) return ''
   const contact = state.cache.contacts.find((c) => c.id === contactId)
   return contact?.email || ''
@@ -2829,7 +2829,7 @@ function readonlyDisplay(name, label, value) {
   `
 }
 
-function activeSalesชื่อs() {
+function activeSalesNames() {
   const sales = state.cache.profiles
     .filter((profile) => profile.role === ROLES.SALE && profile.is_active)
     .map((profile) => displayUser(profile.id))
@@ -2877,24 +2877,24 @@ function selectStaticField(name, label, values, required, selected = '', disable
 
 function multiSelectField(name, label, rows, valueField, labelField, selected = [], disabled = '') {
   const selectedSet = new Set(Array.isArray(selected) ? selected.map(String) : [])
-  const safeชื่อ = escapeAttr(name)
+  const safeName = escapeAttr(name)
   const controls = (rows || []).map((row) => {
     const value = String(row[valueField])
     const labelValue = row[labelField] || row.name || row.email || row.id
     const id = fieldId(name)
     return `
       <label class="check-chip" for="${escapeAttr(id)}">
-        <input id="${escapeAttr(id)}" type="checkbox" name="${safeชื่อ}" value="${escapeAttr(value)}" data-multi-name="${safeชื่อ}" ${selectedSet.has(value) ? 'checked' : ''} ${disabled}>
+        <input id="${escapeAttr(id)}" type="checkbox" name="${safeName}" value="${escapeAttr(value)}" data-multi-name="${safeName}" ${selectedSet.has(value) ? 'checked' : ''} ${disabled}>
         <span>${escapeHTML(labelValue)}</span>
       </label>
     `
   }).join('')
   return `
-    <div class="field full" data-field="${safeชื่อ}">
+    <div class="field full" data-field="${safeName}">
       <div class="field-label">${escapeHTML(label)}</div>
       <div class="check-grid">${controls || '<span class="muted">ยังไม่มีรายการให้เลือก</span>'}</div>
       <div class="help">เลือกได้มากกว่า 1 รายการ</div>
-      <div class="field-error" data-field-error="${safeชื่อ}"></div>
+      <div class="field-error" data-field-error="${safeName}"></div>
     </div>
   `
 }
@@ -2955,8 +2955,8 @@ function formValues(form) {
     values[select.name] = Array.from(select.selectedOptions).map((option) => option.value).filter(Boolean)
   })
 
-  const multiชื่อs = Array.from(new Set(Array.from(form.querySelectorAll('[data-multi-name]')).map((input) => input.name)))
-  multiชื่อs.forEach((name) => {
+  const multiNames = Array.from(new Set(Array.from(form.querySelectorAll('[data-multi-name]')).map((input) => input.name)))
+  multiNames.forEach((name) => {
     values[name] = Array.from(form.querySelectorAll(`[name="${cssEscape(name)}"][data-multi-name]:checked`)).map((input) => input.value).filter(Boolean)
   })
 
@@ -2970,14 +2970,14 @@ function setFormBusy(form, busy) {
 
   form.querySelectorAll('button').forEach((el) => {
     if (busy) {
-      el.dataset.wasปิดใช้d = el.disabled ? 'true' : 'false'
+      el.dataset.wasDisabled = el.disabled ? 'true' : 'false'
       el.dataset.originalText = el.textContent
       el.disabled = true
       if (el.type === 'submit') el.textContent = 'กำลังบันทึก...'
     } else {
-      el.disabled = el.dataset.wasปิดใช้d === 'true'
+      el.disabled = el.dataset.wasDisabled === 'true'
       if (el.dataset.originalText) el.textContent = el.dataset.originalText
-      delete el.dataset.wasปิดใช้d
+      delete el.dataset.wasDisabled
       delete el.dataset.originalText
     }
   })
@@ -3013,11 +3013,11 @@ async function withActionBusy(button, actionFn) {
   }
 }
 
-function accountModuleชื่อs(accountId) {
-  const moduleIds = state.cache.accountสินค้า
+function accountModuleNames(accountId) {
+  const moduleIds = state.cache.accountModules
     .filter((row) => row.account_id === accountId)
     .map((row) => row.module_id)
-  return moduleIds.map((id) => masterชื่อ('modules', id)).filter(Boolean)
+  return moduleIds.map((id) => masterName('modules', id)).filter(Boolean)
 }
 
 function cssEscape(value) {
@@ -3028,9 +3028,9 @@ function cssEscape(value) {
 }
 
 
-function createValidationError(message, fieldชื่อs = []) {
+function createValidationError(message, fieldNames = []) {
   const error = new Error(message)
-  error.fieldชื่อs = fieldชื่อs
+  error.fieldNames = fieldNames
   return error
 }
 
@@ -3044,20 +3044,20 @@ function showFormError(form, error) {
   clearFormErrors(form)
   const message = error.message || String(error)
   const summary = document.createElement('div')
-  summary.classชื่อ = 'form-error'
+  summary.className = 'form-error'
   summary.setAttribute('role', 'alert')
   summary.textContent = message
   form.prepend(summary)
 
-  const fieldชื่อs = Array.isArray(error.fieldชื่อs) ? error.fieldชื่อs : []
-  fieldชื่อs.forEach((name) => {
+  const fieldNames = Array.isArray(error.fieldNames) ? error.fieldNames : []
+  fieldNames.forEach((name) => {
     const input = form.querySelector(`[name="${cssEscape(name)}"]`)
     const holder = form.querySelector(`[data-field-error="${cssEscape(name)}"]`)
     if (input) input.setAttribute('aria-invalid', 'true')
     if (holder) holder.textContent = message
   })
 
-  const firstInvalid = fieldชื่อs.length ? form.querySelector(`[name="${cssEscape(fieldชื่อs[0])}"]`) : null
+  const firstInvalid = fieldNames.length ? form.querySelector(`[name="${cssEscape(fieldNames[0])}"]`) : null
   if (firstInvalid && typeof firstInvalid.focus === 'function') {
     firstInvalid.focus()
   } else {
@@ -3078,7 +3078,7 @@ function emptyState(title, description, actionHTML = '') {
 
 function daysFromToday(dateValue) {
   if (!dateValue) return 999
-  const target = new วันที่(dateValue)
+  const target = new Date(dateValue)
   const today = startOfToday()
   return Math.ceil((target - today) / 86400000)
 }
@@ -3096,30 +3096,30 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null
 }
 
-function formatวันที่(value) {
+function formatDateี่(value) {
   if (!value) return '-'
   try {
-    return new Intl.วันที่TimeFormat('th-TH', { dateStyle: 'medium' }).format(new วันที่(value))
+    return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium' }).format(new Date(value))
   } catch (_error) {
     return String(value)
   }
 }
 
-function formatวันที่Time(value) {
+function formatDateTime(value) {
   if (!value) return '-'
   try {
-    return new Intl.วันที่TimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' }).format(new วันที่(value))
+    return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   } catch (_error) {
     return String(value)
   }
 }
 
 function todayISO() {
-  return new วันที่().toISOString().slice(0, 10)
+  return new Date().toISOString().slice(0, 10)
 }
 
 function startOfToday() {
-  const date = new วันที่()
+  const date = new Date()
   date.setHours(0, 0, 0, 0)
   return date
 }
@@ -3131,8 +3131,8 @@ function datePart(value) {
 
 function timelineWidth(start, end) {
   if (!start || !end) return 20
-  const s = new วันที่(start)
-  const e = new วันที่(end)
+  const s = new Date(start)
+  const e = new Date(end)
   const days = Math.max(1, Math.round((e - s) / 86400000) + 1)
   return Math.max(12, Math.min(100, days * 7))
 }
@@ -3152,7 +3152,7 @@ function escapeAttr(value) {
 
 function toast(message, type = 'success') {
   const item = document.createElement('div')
-  item.classชื่อ = `toast ${type}`
+  item.className = `toast ${type}`
   item.innerHTML = `<span>${escapeHTML(message)}</span><button type="button" aria-label="close">×</button>`
   item.querySelector('button').addEventListener('click', () => item.remove())
   toastRoot.appendChild(item)
@@ -3160,7 +3160,7 @@ function toast(message, type = 'success') {
 }
 
 
-/* v1.4.0 overrides: Thai UI, no legacy Account ID, hover sidebar, master delete guard */
+/* v1.4.1 overrides: Thai UI, no legacy Account ID, hover sidebar, master delete guard + auth hotfix */
 ROUTES.forEach((route) => {
   const labels = {
     dashboard: 'ภาพรวม',

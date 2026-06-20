@@ -1510,7 +1510,7 @@ form[aria-busy="true"] button {
 }
 
 
-/* v1.4.0 hover sidebar and compact Thai UI */
+/* v1.4.1 hover sidebar and compact Thai UI */
 .app-layout.sidebar-collapsed {
   grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr);
 }

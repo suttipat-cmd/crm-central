@@ -1,11 +1,18 @@
 # Internal CRM Ops
 
-Current version: `1.4.0`  
+Current version: `1.4.1`  
 Release date: `2026-06-20`  
 Stack: GitHub Pages + Supabase + plain HTML/CSS/JS  
 Repository files allowed: `README.md`, `index.html`, `script.js`, `style.css`
 
 ## Changelog
+
+### v1.4.1 — Hotfix Login Auth Method
+
+- แก้ regression จาก v1.4.0 ที่ internal JS identifier ถูกแปลเป็นภาษาไทย ทำให้เรียก `signInWithPassword()` ผิดเป็น `signInWithรหัสผ่าน()` และ login ไม่ได้
+- คืนชื่อ internal identifier/API/property ที่ต้องเป็นภาษาอังกฤษ เช่น `autoRefreshToken`, `dataset.filterName`, `dataset.navAccount`, `className`, `DateTimeFormat`, `accountModules`, `leadSources`, `contactStatuses`, `accountCsOwners`
+- ไม่มี SQL migration ใหม่ และไม่กระทบ schema/RLS
+
 
 ### v1.4.0 — Thai UI, Hover Sidebar, Master Delete Guard
 
@@ -157,26 +164,18 @@ const CONFIG = {
 
 ห้ามใส่ `service_role key` ใน frontend
 
-## SQL Migration v1.4.0
+## SQL / Migration
 
-ถ้าเคยรัน v1.3.0 แล้ว ให้รันไฟล์ `internal-crm-ops-v1.4.0-migration.sql` ก่อน deploy frontend
+v1.4.1 ไม่มี SQL migration ใหม่
 
-สิ่งที่ migration ทำ:
-
-```text
-- drop accounts.legacy_account_id
-- drop idx_accounts_legacy_account_id
-- recreate create_mkt_lead โดยไม่มี p_legacy_account_id
-- recreate create_sales_lead โดยไม่มี p_legacy_account_id
-- keep lead_channels และ business_types
-```
+ถ้าระบบของคุณยังไม่ได้อัปเดตจาก v1.3.0 เป็น v1.4.0 ให้รัน migration v1.4.0 ก่อน เพราะ migration นั้นเป็นตัวที่ลบ `legacy_account_id` และ recreate RPC ที่เกี่ยวข้อง
 
 ## Deploy
 
 ```bash
 git status
 git add README.md index.html script.js style.css
-git commit -m "release: thai ui hover sidebar master delete v1.4.0"
+git commit -m "hotfix: fix login auth method v1.4.1"
 git push
 ```
 
@@ -190,7 +189,6 @@ Mac: Cmd + Shift + R
 ## Test Checklist
 
 - Login ด้วย Admin
-- รัน SQL migration v1.4.0 สำเร็จ
 - เปิด Sidebar แล้วเห็น icon-only
 - Hover sidebar แล้วเมนูขยาย
 - ไม่มีปุ่มย่อ/ขยาย sidebar
@@ -215,4 +213,4 @@ git push
 
 Database:
 
-v1.4.0 ลบ column `legacy_account_id` ถ้าต้อง rollback DB ต้อง restore จาก Supabase backup เท่านั้น
+v1.4.1 ไม่มี SQL ใหม่ ถ้าต้อง rollback DB ให้ใช้ rollback note ของ v1.4.0 เฉพาะกรณีที่เพิ่งรัน migration ลบ `legacy_account_id`
