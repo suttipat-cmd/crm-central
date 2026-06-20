@@ -1,11 +1,22 @@
 # Internal CRM Ops
 
-Current version: `1.1.0`  
+Current version: `1.2.0`  
 Release date: `2026-06-20`  
 Stack: GitHub Pages + Supabase + plain HTML/CSS/JS  
 Repository files allowed: `README.md`, `index.html`, `script.js`, `style.css`
 
 ## Changelog
+
+### v1.2.0 — Sidebar, Modal Forms and Lead Journey UX
+
+- Sidebar default เป็นแบบย่อ แสดงเฉพาะ icon พร้อมปุ่ม expand/collapse และจำสถานะด้วย localStorage
+- ปรับ layout, z-index, topbar, tabs, filter panel, modal และ responsive เพื่อป้องกัน UI ซ้อนทับ
+- ย้ายฟอร์มสร้าง/เพิ่มข้อมูลหลักทั้งหมดไปอยู่ใน modal เปิดจากปุ่ม action
+- หน้า Leads เปลี่ยนเป็น Lead Journey: default แสดง Lead ที่ยัง active แต่ยังมี tab All/Demo/Customer/Lost เพื่อไม่ให้ข้อมูลหายหลังเปลี่ยน stage
+- หลังสร้าง MKT Lead จะแสดง Running No. และ Sale ที่ถูก assign
+- เพิ่ม loading/disabled state ให้ action button สำคัญ เช่น Refresh, Convert, Mark Lost, Mark Done, Save Profile และ Master Data
+- Master data selection ยังคงใช้ dropdown/checkbox selector จาก master list ตาม role และ context
+- v1.2.0 ไม่มี migration SQL ใหม่ ใช้ schema v1.0.2/v1.1.0 เดิมได้
 
 ### v1.1.0 — UX/UI production polish
 
@@ -136,9 +147,12 @@ Timeline / Gantt แบบเบื้องต้น
 UX behavior ปัจจุบัน:
 
 ```text
+- Sidebar default เป็นแบบย่อเพื่อประหยัดพื้นที่ และขยายได้ด้วยปุ่ม toggle
 - Collection หลักมี search/filter/sort/pagination ฝั่ง frontend
+- หน้า Leads เป็น Lead Journey: default แสดง active Lead แต่ยังดู All/Demo/Customer/Lost ได้
 - Search รองรับชื่อบริษัท, ผู้ติดต่อ, เบอร์, อีเมล, Running No. และรายละเอียดที่เกี่ยวข้อง
 - Account Detail ใช้ tab เพื่อแยก section ลด cognitive load
+- ฟอร์มสร้าง/เพิ่มข้อมูลหลักเปิดผ่าน modal เพื่อลด UI ซ้อนและไม่ทำให้หน้าแรกยาวเกินไป
 - My Work รวม Lead/Task/Demo ที่ควรติดตามต่อ
 - Empty state, unauthorized state, not-found state และ form validation state มีข้อความแนะนำผู้ใช้
 - Multi-select ใช้ checkbox/chip selector แทน native select multiple

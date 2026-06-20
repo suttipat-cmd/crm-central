@@ -1,12 +1,12 @@
 
 /*
   Internal CRM Ops
-  Version: 1.1.0
+  Version: 1.2.0
   Stack: GitHub Pages + Supabase
   Files: README.md, index.html, script.js, style.css
 */
 
-const APP_VERSION = '1.1.0'
+const APP_VERSION = '1.2.0'
 
 const CONFIG = {
   supabaseUrl: 'https://eplqmkiftafkvqdgvsfp.supabase.co',
@@ -101,8 +101,10 @@ const state = {
     tasks: 'board',
     training: 'calendar'
   },
+  sidebarCollapsed: true,
+  modal: null,
   filters: {
-    leads: { q: '', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 },
+    leads: { q: '', stage: 'lead', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 },
     accounts: { q: '', stage: '', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 },
     demo: { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 },
     customers: { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 },
@@ -149,6 +151,8 @@ document.addEventListener('change', onChange)
 document.addEventListener('input', onInput)
 
 async function init() {
+  state.sidebarCollapsed = getStoredSidebarCollapsed()
+
   if (!isConfigured()) {
     renderSetupRequired()
     return
@@ -339,9 +343,11 @@ function render() {
   app.innerHTML = renderAppLayout(nav.label, renderRoute(route), nav.key)
 }
 
+
 function renderAppLayout(title, content, activeKey) {
+  const collapsedClass = state.sidebarCollapsed ? 'sidebar-collapsed' : ''
   return `
-    <div class="app-layout">
+    <div class="app-layout ${collapsedClass}">
       ${renderSidebar(activeKey)}
       <main class="main">
         ${renderTopbar(title)}
@@ -349,31 +355,36 @@ function renderAppLayout(title, content, activeKey) {
           ${content}
         </section>
       </main>
+      ${renderModal()}
     </div>
   `
 }
+
 function renderSidebar(activeKey) {
   const links = ROUTES
     .filter((item) => hasRole(item.roles))
     .map((item) => `
-      <button class="nav-link ${activeKey === item.key ? 'active' : ''}" data-nav="${item.key}" type="button">
-        <span>${item.icon}</span><span>${escapeHTML(item.label)}</span>
+      <button class="nav-link ${activeKey === item.key ? 'active' : ''}" data-nav="${item.key}" type="button" title="${escapeAttr(item.label)}" aria-label="${escapeAttr(item.label)}">
+        <span class="nav-icon" aria-hidden="true">${item.icon}</span><span class="nav-label">${escapeHTML(item.label)}</span>
       </button>
     `).join('')
 
   return `
-    <aside class="sidebar">
+    <aside class="sidebar" aria-label="Main navigation">
       <div class="brand">
         <div class="brand-mark">CRM</div>
-        <div>
+        <div class="brand-copy">
           <span class="brand-title">Internal CRM Ops</span>
           <span class="brand-version">v${APP_VERSION}</span>
         </div>
+        <button class="sidebar-toggle" type="button" data-action="toggle-sidebar" title="${state.sidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'}" aria-label="${state.sidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'}">
+          ${state.sidebarCollapsed ? '›' : '‹'}
+        </button>
       </div>
       <nav class="nav">${links}</nav>
       <div class="sidebar-footer">
-        <div>${escapeHTML(roleLabel(state.profile.role))}</div>
-        <div>${escapeHTML(state.profile.display_name || state.profile.email || '')}</div>
+        <div class="nav-label">${escapeHTML(roleLabel(state.profile.role))}</div>
+        <div class="nav-label">${escapeHTML(state.profile.display_name || state.profile.email || '')}</div>
       </div>
     </aside>
   `
@@ -676,30 +687,53 @@ function hasDemo(accountId) {
   return state.cache.demos.some((demo) => demo.account_id === accountId)
 }
 
+
 function renderLeads() {
-  const leads = state.cache.accounts.filter((a) => a.lifecycle_stage === 'lead')
+  const leadJourneys = state.cache.accounts
+  const filter = getFilter('leads')
+  if (filter.stage === undefined || filter.stage === null) filter.stage = 'lead'
+
+  const tabs = [
+    ['', 'ทั้งหมด'],
+    ['lead', 'Active Lead'],
+    ['demo', 'อยู่ใน Demo'],
+    ['customer', 'เป็น Customer แล้ว'],
+    ['lost', 'Lost / Churn']
+  ]
+
   return `
     <div class="page-header">
       <div>
-        <h2>Lead Inbox</h2>
-        <p>MKT Lead มี Running No. อัตโนมัติ ส่วน Sale-created Lead ไม่มี Running No.</p>
+        <h2>Lead Journey</h2>
+        <p>Default แสดง Lead ที่ยัง active แต่ข้อมูลที่เปลี่ยนเป็น Demo / Customer / Lost ยังดูต่อได้จาก tab อื่น</p>
+      </div>
+      <div class="actions">
+        ${hasRole([ROLES.ADMIN, ROLES.MKT]) ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ สร้าง MKT Lead</button>` : ''}
+        ${hasRole([ROLES.ADMIN, ROLES.SALE]) ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ Sale สร้าง Lead</button>` : ''}
       </div>
     </div>
 
-    ${renderLeadCreatePanel()}
+    <div class="tabs lead-tabs" role="tablist" aria-label="Lead journey filters">
+      ${tabs.map(([stage, label]) => `
+        <button class="tab ${String(filter.stage || '') === String(stage) ? 'active' : ''}" type="button" data-lead-tab="${escapeAttr(stage)}">
+          ${escapeHTML(label)}
+        </button>
+      `).join('')}
+    </div>
 
-    <div class="card" style="margin-top:16px">
-      <div class="page-header">
+    <div class="card">
+      <div class="page-header compact-header">
         <div>
-          <h3>Lead List</h3>
-          <p>${leads.length} รายการ</p>
+          <h3>Lead Journey List</h3>
+          <p>แสดงตามสิทธิ์ของผู้ใช้และ filter ปัจจุบัน</p>
         </div>
         ${renderViewSwitcher('leads')}
       </div>
-      ${renderAccountsCollection(leads, 'leads')}
+      ${renderAccountsCollection(leadJourneys, 'leads')}
     </div>
   `
 }
+
 
 function renderLeadCreatePanel() {
   const canCreateMkt = hasRole([ROLES.ADMIN, ROLES.MKT])
@@ -707,9 +741,9 @@ function renderLeadCreatePanel() {
   if (!canCreateMkt && !canCreateSale) return ''
 
   return `
-    <div class="grid grid-2">
-      ${canCreateMkt ? renderMktLeadForm() : ''}
-      ${canCreateSale ? renderSaleLeadForm() : ''}
+    <div class="actions lead-create-actions">
+      ${canCreateMkt ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ สร้าง MKT Lead</button>` : ''}
+      ${canCreateSale ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ Sale สร้าง Lead</button>` : ''}
     </div>
   `
 }
@@ -929,6 +963,7 @@ function renderProfilesAdmin() {
   `
 }
 
+
 function renderMasterAdmin(config) {
   const rows = (state.cache[config.key] || []).map((row) => `
     <tr>
@@ -944,11 +979,10 @@ function renderMasterAdmin(config) {
 
   return `
     <div class="card">
-      <h3>${escapeHTML(config.label)}</h3>
-      <form class="actions" data-form="create-master" data-table="${config.table}" data-name-field="${config.nameField}">
-        <input name="name" placeholder="เพิ่มรายการใหม่" required>
-        <button class="btn primary" type="submit">Add</button>
-      </form>
+      <div class="section-head">
+        <h3>${escapeHTML(config.label)}</h3>
+        <button class="btn small primary" type="button" data-open-modal="create-master" data-table="${escapeAttr(config.table)}" data-name-field="${escapeAttr(config.nameField)}" data-label="${escapeAttr(config.label)}">+ Add</button>
+      </div>
       <div class="table-wrap" style="margin-top:12px">
         <table>
           <thead><tr><th>Name</th><th>Status</th><th></th></tr></thead>
@@ -976,7 +1010,7 @@ function renderAccountDetail(accountId) {
   ]
 
   const contentByTab = {
-    overview: `${renderAccountOverviewForm(account)}${renderContactsCard(account)}${renderActivitiesCard(account)}`,
+    overview: `${renderAccountOverviewCard(account)}${renderContactsCard(account)}${renderActivitiesCard(account)}`,
     demo: renderDemoCard(account),
     training: renderTrainingCard(account),
     customer: renderCustomerCard(account),
@@ -1016,6 +1050,29 @@ function renderAccountDetail(accountId) {
     </div>
   `
 }
+
+function renderAccountOverviewCard(account) {
+  return `
+    <div class="card">
+      <div class="section-head">
+        <h3>Account Overview</h3>
+        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="account-overview" data-account-id="${account.id}">Edit Overview</button>` : ''}
+      </div>
+      <div class="meta-grid detail-meta">
+        <div class="meta-label">ชื่อบริษัท</div><div>${escapeHTML(account.company_name || '-')}</div>
+        <div class="meta-label">Short Name</div><div>${escapeHTML(account.short_name || '-')}</div>
+        <div class="meta-label">Tax ID</div><div>${escapeHTML(account.tax_id || '-')}</div>
+        <div class="meta-label">จำนวนรถ</div><div>${escapeHTML(String(account.cars_estimate || '-'))}</div>
+        <div class="meta-label">Lead Source</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
+        <div class="meta-label">Campaign</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
+        <div class="meta-label">สถานะการติดต่อ</div><div>${escapeHTML(masterName('contactStatuses', account.contact_status_id))}</div>
+        <div class="meta-label">Modules</div><div>${escapeHTML(accountModuleNames(account.id).join(', ') || '-')}</div>
+        <div class="meta-label">รายละเอียด</div><div>${escapeHTML(account.product_interest || account.initial_note || '-')}</div>
+      </div>
+    </div>
+  `
+}
+
 function renderAccountOverviewForm(account) {
   const disabled = isReadOnly() ? 'disabled' : ''
   return `
@@ -1042,6 +1099,7 @@ function renderAccountOverviewForm(account) {
   `
 }
 
+
 function renderContactsCard(account) {
   const contacts = state.cache.contacts.filter((c) => c.account_id === account.id)
   const rows = contacts.map((c) => `
@@ -1055,25 +1113,20 @@ function renderContactsCard(account) {
 
   return `
     <div class="card">
-      <h3>Contacts</h3>
+      <div class="section-head">
+        <h3>Contacts</h3>
+        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-contact" data-account-id="${account.id}">+ Add Contact</button>` : ''}
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>ชื่อ</th><th>Email</th><th>Phone</th><th>Role</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="4" class="empty">ยังไม่มีผู้ติดต่อ</td></tr>'}</tbody>
         </table>
       </div>
-      ${!isReadOnly() ? `
-        <form class="form-grid" style="margin-top:14px" data-form="add-contact" data-account-id="${account.id}">
-          ${inputField('contact_name', 'ชื่อผู้ติดต่อ', 'text', true)}
-          ${inputField('email', 'Email', 'email', false)}
-          ${inputField('phone', 'Phone', 'text', false)}
-          ${inputField('contact_role', 'Role', 'text', false, 'primary')}
-          <div class="full actions"><button class="btn primary" type="submit">Add Contact</button></div>
-        </form>
-      ` : ''}
     </div>
   `
 }
+
 
 function renderActivitiesCard(account) {
   const activities = state.cache.activities
@@ -1093,20 +1146,15 @@ function renderActivitiesCard(account) {
 
   return `
     <div class="card">
-      <h3>Activities / Notes</h3>
-      <div class="list-view">${items || '<div class="empty">ยังไม่มี activity</div>'}</div>
-      ${!isReadOnly() ? `
-        <form class="form-grid" style="margin-top:14px" data-form="add-activity" data-account-id="${account.id}">
-          ${selectStaticField('activity_type', 'Type', ['note', 'call', 'follow_up', 'mkt_update', 'sale_update', 'cs_update'], false)}
-          ${inputField('title', 'Title', 'text', false)}
-          <div class="field full"><label>Content</label><textarea name="content" required></textarea></div>
-          ${inputField('next_follow_up_at', 'Next Follow-up', 'datetime-local', false)}
-          <div class="full actions"><button class="btn primary" type="submit">Add Activity</button></div>
-        </form>
-      ` : ''}
+      <div class="section-head">
+        <h3>Activities / Notes</h3>
+        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-activity" data-account-id="${account.id}">+ Add Activity</button>` : ''}
+      </div>
+      <div class="list-view">${items || emptyState('ยังไม่มี activity', 'เพิ่ม note, call log หรือ follow-up เพื่อเก็บประวัติของ account นี้')}</div>
     </div>
   `
 }
+
 
 function renderDemoCard(account) {
   const demos = state.cache.demos.filter((d) => d.account_id === account.id)
@@ -1116,52 +1164,50 @@ function renderDemoCard(account) {
       <td>${formatDate(demo.start_date)}</td>
       <td>${formatDate(demo.end_date)}</td>
       <td>${escapeHTML(demo.demo_result || '-')}</td>
+      <td><button class="btn small" type="button" data-open-modal="edit-demo" data-demo-id="${demo.id}">Edit</button></td>
     </tr>
   `).join('')
 
   return `
     <div class="card">
-      <h3>Demo</h3>
+      <div class="section-head">
+        <h3>Demo</h3>
+        ${!isReadOnly() && account.lifecycle_stage !== 'lost' ? `<button class="btn small primary" type="button" data-open-modal="request-demo" data-account-id="${account.id}">+ Request Demo</button>` : ''}
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Status</th><th>Start</th><th>End</th><th>Result</th></tr></thead>
-          <tbody>${demoRows || '<tr><td colspan="4" class="empty">ยังไม่มี Demo</td></tr>'}</tbody>
+          <thead><tr><th>Status</th><th>Start</th><th>End</th><th>Result</th><th></th></tr></thead>
+          <tbody>${demoRows || '<tr><td colspan="5" class="empty">ยังไม่มี Demo</td></tr>'}</tbody>
         </table>
       </div>
       ${demos.map(renderDemoDetail).join('')}
-      ${!isReadOnly() ? renderRequestDemoForm(account) : ''}
     </div>
   `
 }
 
+
 function renderDemoDetail(demo) {
   const users = state.cache.demoUsers.filter((u) => u.demo_session_id === demo.id)
   const logs = state.cache.demoLogs.filter((l) => l.demo_session_id === demo.id).slice(0, 6)
-  const disabled = isReadOnly() ? 'disabled' : ''
 
   return `
-    <div class="card compact" style="margin-top:12px">
-      <h3>Demo Detail: ${formatDate(demo.start_date)} - ${formatDate(demo.end_date)}</h3>
-      <form class="form-grid" data-form="update-demo" data-demo-id="${demo.id}">
-        ${selectStaticField('demo_status', 'Demo Status', ['requested', 'active', 'extended', 'ended', 'cancelled', 'converted', 'lost'], true, demo.demo_status || 'requested', disabled)}
-        ${inputField('start_date', 'วันที่เริ่ม', 'date', false, demo.start_date || '', disabled)}
-        ${inputField('end_date', 'วันที่สิ้นสุด', 'date', false, demo.end_date || '', disabled)}
-        <div class="field full"><label>ผลการ Demo</label><textarea name="demo_result" ${disabled}>${escapeHTML(demo.demo_result || '')}</textarea></div>
-        <div class="field full"><label>Requirement</label><textarea name="requirement_note" ${disabled}>${escapeHTML(demo.requirement_note || '')}</textarea></div>
-        <div class="field full"><label>Follow-up Note</label><textarea name="follow_up_note" ${disabled}>${escapeHTML(demo.follow_up_note || '')}</textarea></div>
-        <div class="full actions"><button class="btn primary" type="submit" ${disabled}>Save Demo</button></div>
-      </form>
+    <div class="card compact subcard">
+      <div class="section-head">
+        <h3>Demo Detail: ${formatDate(demo.start_date)} - ${formatDate(demo.end_date)}</h3>
+        <div class="actions">
+          ${!isReadOnly() ? `<button class="btn small" type="button" data-open-modal="edit-demo" data-demo-id="${demo.id}">Edit Demo</button>` : ''}
+          ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-demo-user" data-demo-id="${demo.id}" data-account-id="${demo.account_id}">+ Demo User</button>` : ''}
+        </div>
+      </div>
+      <div class="meta-grid detail-meta">
+        <div class="meta-label">Status</div><div>${badge(demo.demo_status || '-')}</div>
+        <div class="meta-label">ผลการ Demo</div><div>${escapeHTML(demo.demo_result || '-')}</div>
+        <div class="meta-label">Requirement</div><div>${escapeHTML(demo.requirement_note || '-')}</div>
+        <div class="meta-label">Follow-up</div><div>${escapeHTML(demo.follow_up_note || '-')}</div>
+      </div>
 
       <h3 style="margin-top:14px">Demo Users</h3>
       ${simpleRowsTable(['Email', 'Name', 'Password'], users.map((u) => [u.user_email || '-', u.user_name || '-', u.demo_password || '-']))}
-      ${!isReadOnly() ? `
-        <form class="form-grid" style="margin-top:12px" data-form="add-demo-user" data-demo-id="${demo.id}" data-account-id="${demo.account_id}">
-          ${inputField('user_email', 'อีเมลผู้ใช้งาน', 'email', true)}
-          ${inputField('user_name', 'ชื่อผู้ใช้งาน', 'text', false)}
-          ${inputField('demo_password', 'รหัสผ่าน Demo', 'text', false)}
-          <div class="full actions"><button class="btn primary" type="submit">Add Demo User</button></div>
-        </form>
-      ` : ''}
 
       <h3 style="margin-top:14px">Demo Logs</h3>
       <div class="list-view">${logs.map((log) => `<div class="list-item"><div class="list-title">${escapeHTML(log.log_type || 'log')}<span class="muted">${formatDateTime(log.created_at)}</span></div><div class="list-meta">${escapeHTML(log.message || '')}</div></div>`).join('') || '<div class="empty">ยังไม่มี log</div>'}</div>
@@ -1185,6 +1231,7 @@ function renderRequestDemoForm(account) {
   `
 }
 
+
 function renderTrainingCard(account) {
   const trainings = state.cache.trainings.filter((t) => t.account_id === account.id)
   const rows = trainings.map((t) => [
@@ -1198,17 +1245,19 @@ function renderTrainingCard(account) {
 
   return `
     <div class="card">
-      <h3>Training</h3>
+      <div class="section-head">
+        <h3>Training</h3>
+        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-training" data-account-id="${account.id}">+ Add Training</button>` : ''}
+      </div>
       ${simpleRowsTable(['ครั้งที่', 'Phase', 'Date', 'Trainer', 'Status', ''], rows)}
       ${trainings.map((training) => renderTrainingSessionDetail(account, training)).join('')}
-      ${!isReadOnly() ? renderTrainingForm(account) : ''}
     </div>
   `
 }
 
+
 function renderTrainingSessionDetail(account, training) {
   const participants = state.cache.trainingParticipants.filter((p) => p.training_session_id === training.id)
-  const contacts = state.cache.contacts.filter((c) => c.account_id === account.id)
   const participantRows = participants.map((p) => [
     p.participant_type || '-',
     p.participant_type === 'internal' ? displayUser(p.profile_id) : (p.name_snapshot || contactName(p.contact_id)),
@@ -1217,20 +1266,12 @@ function renderTrainingSessionDetail(account, training) {
   ])
 
   return `
-    <div class="card compact" style="margin-top:12px">
-      <h3>Training #${escapeHTML(training.session_no || '-')} Participants</h3>
+    <div class="card compact subcard">
+      <div class="section-head">
+        <h3>Training #${escapeHTML(training.session_no || '-')} Participants</h3>
+        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-training-participant" data-training-id="${training.id}" data-account-id="${account.id}">+ Participant</button>` : ''}
+      </div>
       ${simpleRowsTable(['Type', 'Name', 'Email', 'Role/Note'], participantRows)}
-      ${!isReadOnly() ? `
-        <form class="form-grid" style="margin-top:12px" data-form="add-training-participant" data-training-id="${training.id}">
-          ${selectStaticField('participant_type', 'Participant Type', ['internal', 'customer'], true, 'customer')}
-          ${selectField('profile_id', 'ทีมเรา', state.cache.profiles.filter((p) => p.is_active), 'id', 'display_name', false)}
-          ${selectField('contact_id', 'ฝั่งลูกค้า', contacts, 'id', 'contact_name', false)}
-          ${inputField('name_snapshot', 'ชื่อ Snapshot', 'text', false)}
-          ${inputField('email_snapshot', 'Email Snapshot', 'email', false)}
-          <div class="field full"><label>Role / Note</label><textarea name="role_note"></textarea></div>
-          <div class="full actions"><button class="btn primary" type="submit">Add Participant</button></div>
-        </form>
-      ` : ''}
     </div>
   `
 }
@@ -1255,38 +1296,52 @@ function renderTrainingForm(account) {
   `
 }
 
+
 function renderCustomerCard(account) {
   const customer = state.cache.customers.find((c) => c.account_id === account.id)
-  const disabled = isReadOnly() ? 'disabled' : ''
+  if (!customer) {
+    return `
+      <div class="card">
+        <div class="section-head">
+          <h3>Customer Profile</h3>
+          ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="customer-profile" data-account-id="${account.id}">+ บันทึก Customer Profile</button>` : ''}
+        </div>
+        ${emptyState('ยังไม่มี Customer Profile', 'เมื่อ account นี้เป็นลูกค้าแล้ว ให้บันทึกข้อมูลลูกค้า จำนวนรถ billing และ engagement ที่นี่')}
+      </div>
+    `
+  }
 
   return `
-    <form class="card" data-form="customer-profile" data-account-id="${account.id}" data-customer-id="${customer?.id || ''}">
-      <h3>Customer Profile</h3>
-      <div class="form-grid">
-        ${inputField('customer_code', 'Customer Code', 'text', false, customer?.customer_code || '', disabled)}
-        ${selectField('owner_id', 'Owner', state.cache.profiles.filter((p) => ['cs', 'admin'].includes(p.role)), 'id', 'display_name', false, customer?.owner_id || '', disabled)}
-        ${inputField('cars', 'Cars / จำนวนรถ', 'number', false, customer?.cars || account.cars_estimate || '', disabled)}
-        ${inputField('functions', 'Function / Use Case', 'text', false, customer?.functions || '', disabled)}
-        ${inputField('start_date', 'Start Date', 'date', false, customer?.start_date || '', disabled)}
-        ${inputField('billing_date', 'Billing Date', 'date', false, customer?.billing_date || '', disabled)}
-        ${selectStaticField('engagement_level', 'Engagement Level', ['low', 'medium', 'high', 'risk'], false, customer?.engagement_level || 'medium', disabled)}
-        ${selectStaticField('customer_status', 'Status', ['onboarding', 'active', 'inactive', 'churned'], false, customer?.customer_status || 'onboarding', disabled)}
-        <div class="field full"><label>Customer Note</label><textarea name="note" ${disabled}>${escapeHTML(customer?.note || '')}</textarea></div>
-        <div class="full actions">
-          <button class="btn primary" type="submit" ${disabled}>Save Customer Profile</button>
-        </div>
+    <div class="card">
+      <div class="section-head">
+        <h3>Customer Profile</h3>
+        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="customer-profile" data-account-id="${account.id}" data-customer-id="${customer.id}">Edit Customer</button>` : ''}
       </div>
-    </form>
+      <div class="meta-grid detail-meta">
+        <div class="meta-label">Customer Code</div><div>${escapeHTML(customer.customer_code || '-')}</div>
+        <div class="meta-label">Owner</div><div>${escapeHTML(displayUser(customer.owner_id))}</div>
+        <div class="meta-label">Cars</div><div>${escapeHTML(String(customer.cars || account.cars_estimate || '-'))}</div>
+        <div class="meta-label">Function</div><div>${escapeHTML(customer.functions || '-')}</div>
+        <div class="meta-label">Start</div><div>${formatDate(customer.start_date)}</div>
+        <div class="meta-label">Billing</div><div>${formatDate(customer.billing_date)}</div>
+        <div class="meta-label">Engagement</div><div>${badge(customer.engagement_level || '-')}</div>
+        <div class="meta-label">Status</div><div>${badge(customer.customer_status || '-')}</div>
+        <div class="meta-label">Note</div><div>${escapeHTML(customer.note || '-')}</div>
+      </div>
+    </div>
   `
 }
+
 
 function renderTasksCard(account) {
   const tasks = state.cache.tasks.filter((t) => t.account_id === account.id)
   return `
     <div class="card">
-      <h3>Tasks</h3>
+      <div class="section-head">
+        <h3>Tasks</h3>
+        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-task" data-account-id="${account.id}">+ Add Task</button>` : ''}
+      </div>
       ${renderTaskList(tasks, false)}
-      ${!isReadOnly() ? renderTaskForm(account) : ''}
     </div>
   `
 }
@@ -1325,6 +1380,7 @@ function renderTaskList(tasks, compact) {
   return `<div class="list-view">${rows}</div>`
 }
 
+
 function renderAccountActions(account) {
   if (isReadOnly()) return ''
   const canConvert = account.lifecycle_stage !== 'customer' && account.lifecycle_stage !== 'lost'
@@ -1334,18 +1390,19 @@ function renderAccountActions(account) {
       <h3>Actions</h3>
       <div class="actions">
         ${canConvert ? `<button class="btn primary" type="button" data-action="convert-customer" data-id="${account.id}">Convert to Customer</button>` : ''}
-        ${canLost ? `<button class="btn danger" type="button" data-action="show-lost-form" data-id="${account.id}">Mark Lost</button>` : ''}
+        ${canLost ? `<button class="btn danger" type="button" data-open-modal="mark-lost" data-account-id="${account.id}">Mark Lost</button>` : ''}
       </div>
-      ${canLost ? renderLostForm(account) : ''}
     </div>
   `
 }
 
+
 function renderLostForm(account) {
   return `
-    <form class="form-grid single" style="margin-top:14px; display:none" data-form="mark-lost" data-account-id="${account.id}" id="lost-form-${account.id}">
+    <form class="form-grid single" data-form="mark-lost" data-account-id="${account.id}" novalidate>
+      <div class="callout warning">การ Mark Lost จะเปลี่ยน stage ของ account นี้ และบันทึกเหตุผลไว้ในประวัติ</div>
       ${selectField('lost_reason_id', 'Lost Reason', state.cache.lostReasons, 'id', 'reason_name', true)}
-      <div class="field"><label>Lost Note</label><textarea name="lost_note" required></textarea></div>
+      <div class="field"><label>Lost Note *</label><textarea name="lost_note" required></textarea><div class="field-error" data-field-error="lost_note"></div></div>
       <button class="btn danger" type="submit">Confirm Lost</button>
     </form>
   `
@@ -1516,11 +1573,22 @@ function prepareCollection(items, key, type) {
   }
 }
 
+
 function getFilter(key) {
   if (!state.filters[key]) {
-    state.filters[key] = { q: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+    state.filters[key] = defaultFilter(key)
   }
   return state.filters[key]
+}
+
+
+function defaultFilter(key) {
+  if (key === 'leads') return { q: '', stage: 'lead', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  if (key === 'accounts') return { q: '', stage: '', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  if (key === 'tasks') return { q: '', status: '', owner: '', priority: '', sort: 'due_asc', page: 1, pageSize: 25 }
+  if (key === 'training') return { q: '', status: '', owner: '', sort: 'date_asc', page: 1, pageSize: 25 }
+  if (key === 'demo' || key === 'customers') return { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  return { q: '', sort: 'updated_desc', page: 1, pageSize: 25 }
 }
 
 function filterCollection(items, filter, type) {
@@ -1805,7 +1873,212 @@ function renderTimelineEvents(rows) {
   `
 }
 
+
+function renderAddContactForm(account) {
+  return `
+    <form class="form-grid" data-form="add-contact" data-account-id="${account.id}" novalidate>
+      ${inputField('contact_name', 'ชื่อผู้ติดต่อ', 'text', true)}
+      ${inputField('email', 'Email', 'email', false)}
+      ${inputField('phone', 'Phone', 'text', false)}
+      ${selectStaticField('contact_role', 'Role', ['primary', 'billing', 'technical', 'user', 'decision_maker', 'other'], false, 'primary')}
+      <div class="full actions"><button class="btn primary" type="submit">Add Contact</button></div>
+    </form>
+  `
+}
+
+function renderAddActivityForm(account) {
+  return `
+    <form class="form-grid" data-form="add-activity" data-account-id="${account.id}" novalidate>
+      ${selectStaticField('activity_type', 'Type', ['note', 'call', 'follow_up', 'mkt_update', 'sale_update', 'cs_update'], false)}
+      ${inputField('title', 'Title', 'text', false)}
+      <div class="field full"><label>Content *</label><textarea name="content" required></textarea><div class="field-error" data-field-error="content"></div></div>
+      ${inputField('next_follow_up_at', 'Next Follow-up', 'datetime-local', false)}
+      <div class="full actions"><button class="btn primary" type="submit">Add Activity</button></div>
+    </form>
+  `
+}
+
+function renderUpdateDemoForm(demo) {
+  const disabled = isReadOnly() ? 'disabled' : ''
+  return `
+    <form class="form-grid" data-form="update-demo" data-demo-id="${demo.id}" novalidate>
+      ${selectStaticField('demo_status', 'Demo Status', ['requested', 'active', 'extended', 'ended', 'cancelled', 'converted', 'lost'], true, demo.demo_status || 'requested', disabled)}
+      ${inputField('start_date', 'วันที่เริ่ม', 'date', false, demo.start_date || '', disabled)}
+      ${inputField('end_date', 'วันที่สิ้นสุด', 'date', false, demo.end_date || '', disabled)}
+      <div class="field full"><label>ผลการ Demo</label><textarea name="demo_result" ${disabled}>${escapeHTML(demo.demo_result || '')}</textarea></div>
+      <div class="field full"><label>Requirement</label><textarea name="requirement_note" ${disabled}>${escapeHTML(demo.requirement_note || '')}</textarea></div>
+      <div class="field full"><label>Follow-up Note</label><textarea name="follow_up_note" ${disabled}>${escapeHTML(demo.follow_up_note || '')}</textarea></div>
+      <div class="full actions"><button class="btn primary" type="submit" ${disabled}>Save Demo</button></div>
+    </form>
+  `
+}
+
+function renderAddDemoUserForm(demoId, accountId) {
+  return `
+    <form class="form-grid" data-form="add-demo-user" data-demo-id="${demoId}" data-account-id="${accountId}" novalidate>
+      ${inputField('user_email', 'อีเมลผู้ใช้งาน', 'email', true)}
+      ${inputField('user_name', 'ชื่อผู้ใช้งาน', 'text', false)}
+      ${inputField('demo_password', 'รหัสผ่าน Demo', 'text', false)}
+      <div class="full actions"><button class="btn primary" type="submit">Add Demo User</button></div>
+    </form>
+  `
+}
+
+function renderAddTrainingParticipantForm(training, account) {
+  const contacts = state.cache.contacts.filter((c) => c.account_id === account?.id)
+  return `
+    <form class="form-grid" data-form="add-training-participant" data-training-id="${training.id}" novalidate>
+      ${selectStaticField('participant_type', 'Participant Type', ['internal', 'customer'], true, 'customer')}
+      ${selectField('profile_id', 'ทีมเรา', state.cache.profiles.filter((p) => p.is_active), 'id', 'display_name', false)}
+      ${selectField('contact_id', 'ฝั่งลูกค้า', contacts, 'id', 'contact_name', false)}
+      ${inputField('name_snapshot', 'ชื่อ Snapshot', 'text', false)}
+      ${inputField('email_snapshot', 'Email Snapshot', 'email', false)}
+      <div class="field full"><label>Role / Note</label><textarea name="role_note"></textarea></div>
+      <div class="full actions"><button class="btn primary" type="submit">Add Participant</button></div>
+    </form>
+  `
+}
+
+function renderCustomerProfileForm(account) {
+  const customer = state.cache.customers.find((c) => c.account_id === account.id)
+  const disabled = isReadOnly() ? 'disabled' : ''
+  return `
+    <form class="form-grid" data-form="customer-profile" data-account-id="${account.id}" data-customer-id="${customer?.id || ''}" novalidate>
+      ${inputField('customer_code', 'Customer Code', 'text', false, customer?.customer_code || '', disabled)}
+      ${selectField('owner_id', 'Owner', state.cache.profiles.filter((p) => ['cs', 'admin'].includes(p.role)), 'id', 'display_name', false, customer?.owner_id || '', disabled)}
+      ${inputField('cars', 'Cars / จำนวนรถ', 'number', false, customer?.cars || account.cars_estimate || '', disabled)}
+      ${inputField('functions', 'Function / Use Case', 'text', false, customer?.functions || '', disabled)}
+      ${inputField('start_date', 'Start Date', 'date', false, customer?.start_date || '', disabled)}
+      ${inputField('billing_date', 'Billing Date', 'date', false, customer?.billing_date || '', disabled)}
+      ${selectStaticField('engagement_level', 'Engagement Level', ['low', 'medium', 'high', 'risk'], false, customer?.engagement_level || 'medium', disabled)}
+      ${selectStaticField('customer_status', 'Status', ['onboarding', 'active', 'inactive', 'churned'], false, customer?.customer_status || 'onboarding', disabled)}
+      <div class="field full"><label>Customer Note</label><textarea name="note" ${disabled}>${escapeHTML(customer?.note || '')}</textarea></div>
+      <div class="full actions"><button class="btn primary" type="submit" ${disabled}>Save Customer Profile</button></div>
+    </form>
+  `
+}
+
+function renderCreateMasterForm(table, nameField) {
+  return `
+    <form class="form-grid single" data-form="create-master" data-table="${escapeAttr(table)}" data-name-field="${escapeAttr(nameField)}" novalidate>
+      ${inputField('name', 'ชื่อรายการ', 'text', true)}
+      <div class="full actions"><button class="btn primary" type="submit">Add</button></div>
+    </form>
+  `
+}
+
+
+function renderModal() {
+  if (!state.modal) return ''
+  const modal = state.modal
+  const title = modalTitle(modal)
+  const content = modalContent(modal)
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal-card" data-modal-card role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}">
+        <header class="modal-header">
+          <div>
+            <h2>${escapeHTML(title)}</h2>
+            <p>${escapeHTML(modalSubtitle(modal))}</p>
+          </div>
+          <button class="modal-close" type="button" data-close-modal aria-label="ปิด">×</button>
+        </header>
+        <div class="modal-body">
+          ${content}
+        </div>
+      </section>
+    </div>
+  `
+}
+
+function modalTitle(modal) {
+  const map = {
+    'create-mkt-lead': 'สร้าง MKT Lead',
+    'create-sales-lead': 'Sale สร้าง Lead',
+    'add-contact': 'เพิ่มผู้ติดต่อ',
+    'add-activity': 'เพิ่ม Activity / Note',
+    'request-demo': 'Request Demo',
+    'edit-demo': 'แก้ไข Demo',
+    'add-demo-user': 'เพิ่ม Demo User',
+    'add-training': 'เพิ่ม Training',
+    'add-training-participant': 'เพิ่มผู้เข้าร่วม Training',
+    'customer-profile': 'บันทึก Customer Profile',
+    'add-task': 'เพิ่ม Task',
+    'mark-lost': 'Mark Lost',
+    'create-master': `เพิ่ม ${modal.label || 'Master Data'}`,
+    'account-overview': 'แก้ไข Account Overview'
+  }
+  return map[modal.type] || 'Modal'
+}
+
+function modalSubtitle(modal) {
+  const account = modal.accountId ? findAccount(modal.accountId) : null
+  if (account) return accountTitle(account)
+  if (modal.type === 'create-mkt-lead') return 'ระบบจะออก Running No. และ assign Sale แบบ round-robin'
+  if (modal.type === 'create-sales-lead') return 'Lead นี้จะไม่มี Running No. และ owner คือ Sale ที่สร้าง'
+  return ''
+}
+
+function modalContent(modal) {
+  const account = modal.accountId ? findAccount(modal.accountId) : null
+  if (modal.type === 'create-mkt-lead') return renderMktLeadForm()
+  if (modal.type === 'create-sales-lead') return renderSaleLeadForm()
+  if (modal.type === 'add-contact' && account) return renderAddContactForm(account)
+  if (modal.type === 'add-activity' && account) return renderAddActivityForm(account)
+  if (modal.type === 'request-demo' && account) return renderRequestDemoForm(account)
+  if (modal.type === 'edit-demo') {
+    const demo = state.cache.demos.find((item) => item.id === modal.demoId)
+    return demo ? renderUpdateDemoForm(demo) : emptyState('ไม่พบ Demo', 'ข้อมูลอาจถูกลบหรือไม่มีสิทธิ์เข้าถึง')
+  }
+  if (modal.type === 'add-demo-user') {
+    return modal.demoId && modal.accountId ? renderAddDemoUserForm(modal.demoId, modal.accountId) : emptyState('ไม่พบ Demo', 'ไม่สามารถเพิ่มผู้ใช้งาน Demo ได้')
+  }
+  if (modal.type === 'add-training' && account) return renderTrainingForm(account)
+  if (modal.type === 'add-training-participant') {
+    const training = state.cache.trainings.find((item) => item.id === modal.trainingId)
+    return training ? renderAddTrainingParticipantForm(training, account || findAccount(training.account_id)) : emptyState('ไม่พบ Training', 'ไม่สามารถเพิ่มผู้เข้าร่วมได้')
+  }
+  if (modal.type === 'customer-profile' && account) return renderCustomerProfileForm(account)
+  if (modal.type === 'add-task' && account) return renderTaskForm(account)
+  if (modal.type === 'mark-lost' && account) return renderLostForm(account)
+  if (modal.type === 'create-master') return renderCreateMasterForm(modal.table, modal.nameField)
+  if (modal.type === 'account-overview' && account) return renderAccountOverviewForm(account)
+  return emptyState('ไม่พบข้อมูล', 'กรุณาปิด modal แล้วลองใหม่')
+}
+
+function openModalFromDataset(dataset) {
+  state.modal = {
+    type: dataset.openModal,
+    accountId: dataset.accountId || '',
+    demoId: dataset.demoId || '',
+    trainingId: dataset.trainingId || '',
+    table: dataset.table || '',
+    nameField: dataset.nameField || '',
+    label: dataset.label || ''
+  }
+  render()
+}
+
+function closeModal() {
+  state.modal = null
+  render()
+}
+
+
 async function onClick(event) {
+  const closeBtn = event.target.closest('[data-close-modal]')
+  if (closeBtn || event.target.matches('[data-modal-backdrop]')) {
+    closeModal()
+    return
+  }
+
+  const openModalBtn = event.target.closest('[data-open-modal]')
+  if (openModalBtn) {
+    openModalFromDataset(openModalBtn.dataset)
+    return
+  }
+
   const nav = event.target.closest('[data-nav]')
   if (nav) {
     location.hash = `#/${nav.dataset.nav}`
@@ -1821,6 +2094,15 @@ async function onClick(event) {
   const viewBtn = event.target.closest('[data-view-key]')
   if (viewBtn) {
     state.viewModes[viewBtn.dataset.viewKey] = viewBtn.dataset.viewMode
+    render()
+    return
+  }
+
+  const leadTab = event.target.closest('[data-lead-tab]')
+  if (leadTab) {
+    const filter = getFilter('leads')
+    filter.stage = leadTab.dataset.leadTab
+    filter.page = 1
     render()
     return
   }
@@ -1844,20 +2126,32 @@ async function onClick(event) {
   if (!action) return
 
   const type = action.dataset.action
-  if (type === 'logout') return logout()
-  if (type === 'refresh-data') return refreshData()
+  if (type === 'toggle-sidebar') {
+    state.sidebarCollapsed = !state.sidebarCollapsed
+    localStorage.setItem('crm_sidebar_collapsed', state.sidebarCollapsed ? 'true' : 'false')
+    render()
+    return
+  }
+
+  if (type === 'logout') return withActionBusy(action, logout)
+  if (type === 'refresh-data') return withActionBusy(action, refreshData)
   if (type === 'print') return window.print()
-  if (type === 'show-lost-form') return showLostForm(action.dataset.id)
-  if (type === 'convert-customer') return convertCustomer(action.dataset.id)
-  if (type === 'mark-task-done') return markTaskDone(action.dataset.id)
-  if (type === 'save-profile') return saveProfile(action.dataset.id)
-  if (type === 'toggle-master') return toggleMaster(action.dataset.table, action.dataset.id, action.dataset.active === 'true')
+  if (type === 'show-lost-form') {
+    state.modal = { type: 'mark-lost', accountId: action.dataset.id }
+    render()
+    return
+  }
+  if (type === 'convert-customer') return withActionBusy(action, () => convertCustomer(action.dataset.id))
+  if (type === 'mark-task-done') return withActionBusy(action, () => markTaskDone(action.dataset.id))
+  if (type === 'save-profile') return withActionBusy(action, () => saveProfile(action.dataset.id))
+  if (type === 'toggle-master') return withActionBusy(action, () => toggleMaster(action.dataset.table, action.dataset.id, action.dataset.active === 'true'))
   if (type === 'clear-filters') {
     const key = action.dataset.filterKey
-    state.filters[key] = { q: '', sort: key === 'tasks' ? 'due_asc' : key === 'training' ? 'date_asc' : 'updated_desc', page: 1, pageSize: 25 }
+    state.filters[key] = defaultFilter(key)
     render()
   }
 }
+
 
 async function onSubmit(event) {
   const form = event.target.closest('form[data-form]')
@@ -1866,6 +2160,7 @@ async function onSubmit(event) {
   if (form.dataset.busy === 'true') return
 
   const type = form.dataset.form
+  let success = false
   try {
     clearFormErrors(form)
     setFormBusy(form, true)
@@ -1885,11 +2180,17 @@ async function onSubmit(event) {
     if (type === 'add-task') await addTask(form)
     if (type === 'mark-lost') await markLost(form)
     if (type === 'create-master') await createMaster(form)
+
+    success = true
   } catch (error) {
     showFormError(form, error)
     toast(error.message || String(error), 'error')
   } finally {
     setFormBusy(form, false)
+    if (success && form.closest('[data-modal-card]')) {
+      state.modal = null
+      render()
+    }
   }
 }
 
@@ -1950,10 +2251,11 @@ async function refreshData() {
   }
 }
 
+
 async function createMktLead(form) {
   const values = formValues(form)
   ensureLeadMinimum(values)
-  const { error } = await state.client.rpc('create_mkt_lead', {
+  const { data, error } = await state.client.rpc('create_mkt_lead', {
     p_company_name: nullIfBlank(values.company_name),
     p_contact_name: nullIfBlank(values.contact_name),
     p_phone: nullIfBlank(values.phone),
@@ -1965,15 +2267,21 @@ async function createMktLead(form) {
     p_module_ids: values.module_ids || []
   })
   if (error) throw error
+
   form.reset()
   await refreshData()
-  toast('สร้าง MKT Lead สำเร็จ', 'success')
+
+  const account = state.cache.accounts.find((item) => item.id === data)
+  const assignedSale = account ? displayUser(account.sale_owner_id) : '-'
+  const runningNo = account?.running_no ? `#${account.running_no}` : '-'
+  toast(`สร้าง MKT Lead สำเร็จ ${runningNo} / Assigned to: ${assignedSale}`, 'success')
 }
+
 
 async function createSalesLead(form) {
   const values = formValues(form)
   ensureLeadMinimum(values)
-  const { error } = await state.client.rpc('create_sales_lead', {
+  const { data, error } = await state.client.rpc('create_sales_lead', {
     p_company_name: nullIfBlank(values.company_name),
     p_contact_name: nullIfBlank(values.contact_name),
     p_phone: nullIfBlank(values.phone),
@@ -1986,7 +2294,8 @@ async function createSalesLead(form) {
   if (error) throw error
   form.reset()
   await refreshData()
-  toast('สร้าง Sale Lead สำเร็จ', 'success')
+  const account = state.cache.accounts.find((item) => item.id === data)
+  toast(`สร้าง Sale Lead สำเร็จ / Owner: ${displayUser(account?.sale_owner_id || state.user.id)}`, 'success')
 }
 
 function ensureLeadMinimum(values) {
@@ -2530,20 +2839,22 @@ function formValues(form) {
   return values
 }
 
+
 function setFormBusy(form, busy) {
   form.dataset.busy = busy ? 'true' : 'false'
   form.setAttribute('aria-busy', busy ? 'true' : 'false')
 
-  // Do not disable input/select/textarea before handlers read FormData.
-  // Disabled controls are excluded from FormData, which caused empty login payloads
-  // and Supabase Auth returned: "missing email or phone".
   form.querySelectorAll('button').forEach((el) => {
     if (busy) {
       el.dataset.wasDisabled = el.disabled ? 'true' : 'false'
+      el.dataset.originalText = el.textContent
       el.disabled = true
+      if (el.type === 'submit') el.textContent = 'กำลังบันทึก...'
     } else {
       el.disabled = el.dataset.wasDisabled === 'true'
+      if (el.dataset.originalText) el.textContent = el.dataset.originalText
       delete el.dataset.wasDisabled
+      delete el.dataset.originalText
     }
   })
 
@@ -2551,6 +2862,38 @@ function setFormBusy(form, busy) {
     delete form.dataset.busy
     form.removeAttribute('aria-busy')
   }
+}
+
+
+function getStoredSidebarCollapsed() {
+  const stored = localStorage.getItem('crm_sidebar_collapsed')
+  if (stored === null) return true
+  return stored === 'true'
+}
+
+async function withActionBusy(button, actionFn) {
+  if (!button || button.dataset.busy === 'true') return
+  try {
+    button.dataset.busy = 'true'
+    button.dataset.originalText = button.textContent
+    button.disabled = true
+    if (!['‹', '›', '×'].includes(button.textContent.trim())) button.textContent = 'กำลังทำงาน...'
+    return await actionFn()
+  } finally {
+    if (button) {
+      button.disabled = false
+      if (button.dataset.originalText) button.textContent = button.dataset.originalText
+      delete button.dataset.originalText
+      delete button.dataset.busy
+    }
+  }
+}
+
+function accountModuleNames(accountId) {
+  const moduleIds = state.cache.accountModules
+    .filter((row) => row.account_id === accountId)
+    .map((row) => row.module_id)
+  return moduleIds.map((id) => masterName('modules', id)).filter(Boolean)
 }
 
 function cssEscape(value) {
@@ -2590,7 +2933,7 @@ function showFormError(form, error) {
     if (holder) holder.textContent = message
   })
 
-  const firstInvalid = fieldNames.length ? form.querySelector(`[name="${CSS.escape(fieldNames[0])}"]`) : null
+  const firstInvalid = fieldNames.length ? form.querySelector(`[name="${cssEscape(fieldNames[0])}"]`) : null
   if (firstInvalid && typeof firstInvalid.focus === 'function') {
     firstInvalid.focus()
   } else {
