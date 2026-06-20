@@ -1,16 +1,16 @@
 
 /*
   Internal CRM Ops
-  Version: 1.0.1
+  Version: 1.0.2
   Stack: GitHub Pages + Supabase
   Files: README.md, index.html, script.js, style.css
 */
 
-const APP_VERSION = '1.0.1'
+const APP_VERSION = '1.0.2'
 
 const CONFIG = {
-  supabaseUrl: 'https://eplqmkiftafkvqdgvsfp.supabase.co',
-  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwbHFta2lmdGFma3ZxZGd2c2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MzY1MDcsImV4cCI6MjA5NzExMjUwN30.sfAcajUcAl8mniP1FeOF94jKYCKybNAqf2xqtQpXm0c'
+  supabaseUrl: 'https://YOUR_PROJECT_REF.supabase.co',
+  supabaseAnonKey: 'YOUR_SUPABASE_ANON_KEY'
 }
 
 const ROLES = {
@@ -1530,6 +1530,7 @@ async function onSubmit(event) {
   const form = event.target.closest('form[data-form]')
   if (!form) return
   event.preventDefault()
+  if (form.dataset.busy === 'true') return
 
   const type = form.dataset.form
   try {
@@ -2144,7 +2145,13 @@ function formValues(form) {
 }
 
 function setFormBusy(form, busy) {
-  form.querySelectorAll('button, input, select, textarea').forEach((el) => {
+  form.dataset.busy = busy ? 'true' : 'false'
+  form.setAttribute('aria-busy', busy ? 'true' : 'false')
+
+  // Do not disable input/select/textarea before handlers read FormData.
+  // Disabled controls are excluded from FormData, which caused empty login payloads
+  // and Supabase Auth returned: "missing email or phone".
+  form.querySelectorAll('button').forEach((el) => {
     if (busy) {
       el.dataset.wasDisabled = el.disabled ? 'true' : 'false'
       el.disabled = true
@@ -2153,6 +2160,11 @@ function setFormBusy(form, busy) {
       delete el.dataset.wasDisabled
     }
   })
+
+  if (!busy) {
+    delete form.dataset.busy
+    form.removeAttribute('aria-busy')
+  }
 }
 
 function nullIfBlank(value) {
