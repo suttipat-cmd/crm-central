@@ -1,12 +1,12 @@
 
 /*
   Internal CRM Ops
-  Version: 1.2.0
+  Version: 1.3.0
   Stack: GitHub Pages + Supabase
   Files: README.md, index.html, script.js, style.css
 */
 
-const APP_VERSION = '1.2.0'
+const APP_VERSION = '1.3.0'
 
 const CONFIG = {
   supabaseUrl: 'https://eplqmkiftafkvqdgvsfp.supabase.co',
@@ -56,6 +56,8 @@ const TABLES = {
   leadSources: 'lead_sources',
   campaigns: 'campaigns',
   contactStatuses: 'contact_statuses',
+  businessTypes: 'business_types',
+  leadChannels: 'lead_channels',
   accountCsOwners: 'account_cs_owners',
   appSettings: 'app_settings'
 }
@@ -65,6 +67,8 @@ const MASTER_TABLES = [
   { key: 'campaigns', table: TABLES.campaigns, label: 'Campaigns', nameField: 'name' },
   { key: 'modules', table: TABLES.modules, label: 'Modules', nameField: 'module_name' },
   { key: 'contactStatuses', table: TABLES.contactStatuses, label: 'Contact Statuses', nameField: 'name' },
+  { key: 'businessTypes', table: TABLES.businessTypes, label: 'Business Types', nameField: 'name' },
+  { key: 'leadChannels', table: TABLES.leadChannels, label: 'Lead Channels', nameField: 'name' },
   { key: 'lostReasons', table: TABLES.lostReasons, label: 'Lost Reasons', nameField: 'reason_name' }
 ]
 
@@ -104,8 +108,8 @@ const state = {
   sidebarCollapsed: true,
   modal: null,
   filters: {
-    leads: { q: '', stage: 'lead', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 },
-    accounts: { q: '', stage: '', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 },
+    leads: { q: '', stage: 'lead', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 },
+    accounts: { q: '', stage: '', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 },
     demo: { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 },
     customers: { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 },
     tasks: { q: '', status: '', owner: '', priority: '', sort: 'due_asc', page: 1, pageSize: 25 },
@@ -134,6 +138,8 @@ const state = {
     leadSources: [],
     campaigns: [],
     contactStatuses: [],
+    businessTypes: [],
+    leadChannels: [],
     accountCsOwners: []
   }
 }
@@ -276,6 +282,8 @@ async function loadAllData() {
     ['leadSources', TABLES.leadSources, '*', 'name'],
     ['campaigns', TABLES.campaigns, '*', 'name'],
     ['contactStatuses', TABLES.contactStatuses, '*', 'name'],
+    ['businessTypes', TABLES.businessTypes, '*', 'name'],
+    ['leadChannels', TABLES.leadChannels, '*', 'name'],
     ['accountCsOwners', TABLES.accountCsOwners, '*', 'created_at']
   ]
 
@@ -748,52 +756,84 @@ function renderLeadCreatePanel() {
   `
 }
 
+
 function renderMktLeadForm() {
+  const today = todayISO()
+  const salesPreview = activeSalesNames()
   return `
-    <form class="card" data-form="create-mkt-lead">
-      <h3>สร้าง MKT Lead</h3>
-      <p class="card-subtitle">ชื่อบริษัทไม่บังคับ แต่ต้องมีข้อมูลขั้นต่ำอย่างน้อย 1 อย่าง</p>
-      <div class="form-grid">
-        ${inputField('company_name', 'ชื่อบริษัท', 'text', false)}
-        ${inputField('contact_name', 'ชื่อผู้ติดต่อ', 'text', false)}
-        ${inputField('phone', 'เบอร์โทร', 'text', false)}
-        ${inputField('email', 'อีเมล', 'email', false)}
-        ${selectField('lead_source_id', 'แหล่งที่มา Lead', state.cache.leadSources, 'id', 'name', false)}
-        ${selectField('campaign_id', 'แคมเปญ', state.cache.campaigns, 'id', 'name', false)}
-        ${inputField('cars_estimate', 'จำนวนรถโดยประมาณ', 'number', false)}
-        ${multiSelectField('module_ids', 'Module ที่สนใจ', state.cache.modules, 'id', 'module_name')}
-        <div class="field full">
-          <label>รายละเอียดเบื้องต้น</label>
-          <textarea name="initial_note"></textarea>
-        </div>
-        <div class="full actions">
-          <button class="btn primary" type="submit">Create MKT Lead</button>
-        </div>
+    <form class="form-grid modal-form" data-form="create-mkt-lead" novalidate>
+      <div class="form-section full">
+        <h3>ข้อมูลจาก Marketing</h3>
+        <p class="card-subtitle">ระบบจะออกลำดับ MKT และ assign Sale แบบ round-robin หลัง Save</p>
+      </div>
+      ${readonlyDisplay('running_no_preview', 'ลำดับ MKT', 'ระบบจะออกเลขอัตโนมัติ')}
+      ${readonlyDisplay('source_type_preview', 'ที่มา Lead', 'Marketing')}
+      ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', true)}
+      ${selectField('campaign_id', 'แคมเปญ', state.cache.campaigns, 'id', 'name', false)}
+      ${inputField('legacy_account_id', 'Account ID จากระบบเดิม', 'text', false)}
+      ${readonlyDisplay('created_at_preview', 'วันที่บันทึก', today)}
+      ${inputField('contact_name', 'ผู้ติดต่อ', 'text', false)}
+      ${inputField('phone', 'เบอร์หลัก', 'text', false)}
+      ${inputField('email', 'อีเมล', 'email', false)}
+      ${inputField('company_name', 'ชื่อบริษัท', 'text', false)}
+      ${multiSelectField('module_ids', 'สินค้า / Modules', state.cache.modules, 'id', 'module_name')}
+      ${inputField('cars_estimate', 'จำนวนรถโดยประมาณ', 'number', false)}
+      ${readonlyDisplay('sale_assignment_preview', 'เซลล์ที่ระบบจะ assign', salesPreview || 'จะแสดงหลัง Save')}
+      <div class="field full" data-field="initial_note">
+        <label for="mkt-initial-note">ข้อมูล Lead</label>
+        <textarea id="mkt-initial-note" name="initial_note" placeholder="รายละเอียด Lead จาก Marketing"></textarea>
+        <div class="field-error" data-field-error="initial_note"></div>
+      </div>
+      <div class="full modal-actions">
+        <button class="btn" type="button" data-close-modal>Cancel</button>
+        <button class="btn primary" type="submit">Save</button>
       </div>
     </form>
   `
 }
 
+
 function renderSaleLeadForm() {
   return `
-    <form class="card" data-form="create-sales-lead">
-      <h3>Sale สร้าง Lead เอง</h3>
-      <p class="card-subtitle">ไม่มี Running No. และ owner คือ Sale ที่สร้าง</p>
-      <div class="form-grid">
-        ${inputField('company_name', 'ชื่อบริษัท', 'text', false)}
-        ${inputField('contact_name', 'ชื่อผู้ติดต่อ', 'text', false)}
-        ${inputField('phone', 'เบอร์โทร', 'text', false)}
-        ${inputField('email', 'อีเมล', 'email', false)}
-        ${selectField('contact_status_id', 'สถานะการติดต่อ', state.cache.contactStatuses, 'id', 'name', false)}
-        ${inputField('cars_estimate', 'จำนวนรถโดยประมาณ', 'number', false)}
-        ${multiSelectField('module_ids', 'Module ที่สนใจ', state.cache.modules, 'id', 'module_name')}
-        <div class="field full">
-          <label>รายละเอียด Lead</label>
-          <textarea name="initial_note"></textarea>
-        </div>
-        <div class="full actions">
-          <button class="btn primary" type="submit">Create Sale Lead</button>
-        </div>
+    <form class="form-grid modal-form" data-form="create-sales-lead" novalidate>
+      <div class="form-section full">
+        <h3>ข้อมูลที่ Sale สร้างเอง</h3>
+        <p class="card-subtitle">Lead นี้ไม่มีลำดับ MKT และ owner คือ Sale ที่ login อยู่</p>
+      </div>
+      ${inputField('legacy_account_id', 'Account ID จากระบบเดิม', 'text', false)}
+      ${inputField('company_name', 'บริษัท', 'text', false)}
+      ${inputField('contact_name', 'ผู้ติดต่อ', 'text', false)}
+      ${inputField('position', 'ตำแหน่ง', 'text', false)}
+      ${inputField('phone', 'เบอร์หลัก', 'text', false)}
+      ${inputField('phone_2', 'เบอร์ 2', 'text', false)}
+      ${inputField('phone_3', 'เบอร์ 3', 'text', false)}
+      ${inputField('email', 'อีเมล', 'email', false)}
+      ${inputField('email_2', 'อีเมล 2', 'email', false)}
+      ${inputField('tax_id', 'Tax ID', 'text', false)}
+      <div class="field full" data-field="address">
+        <label for="sale-address">ที่อยู่</label>
+        <textarea id="sale-address" name="address"></textarea>
+        <div class="field-error" data-field-error="address"></div>
+      </div>
+      ${selectField('business_type_id', 'ธุรกิจ', state.cache.businessTypes, 'id', 'name', false)}
+      <div class="field full" data-field="initial_note">
+        <label for="sale-initial-note">รายละเอียด</label>
+        <textarea id="sale-initial-note" name="initial_note"></textarea>
+        <div class="field-error" data-field-error="initial_note"></div>
+      </div>
+      ${inputField('cars_estimate', 'จำนวนรถ', 'number', false, '0')}
+      ${multiSelectField('module_ids', 'สินค้า / Modules', state.cache.modules, 'id', 'module_name')}
+      ${inputField('current_gps_provider', 'GPS ปัจจุบัน', 'text', false)}
+      <div class="field full" data-field="note">
+        <label for="sale-note">หมายเหตุ</label>
+        <textarea id="sale-note" name="note"></textarea>
+        <div class="field-error" data-field-error="note"></div>
+      </div>
+      ${readonlyDisplay('sale_email_preview', 'อีเมลเซลล์', state.profile?.email || state.user?.email || '-')}
+      ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', true)}
+      <div class="full modal-actions">
+        <button class="btn" type="button" data-close-modal>Cancel</button>
+        <button class="btn primary" type="submit">Save</button>
       </div>
     </form>
   `
@@ -1061,10 +1101,15 @@ function renderAccountOverviewCard(account) {
       <div class="meta-grid detail-meta">
         <div class="meta-label">ชื่อบริษัท</div><div>${escapeHTML(account.company_name || '-')}</div>
         <div class="meta-label">Short Name</div><div>${escapeHTML(account.short_name || '-')}</div>
+        <div class="meta-label">Account ID เดิม</div><div>${escapeHTML(account.legacy_account_id || '-')}</div>
         <div class="meta-label">Tax ID</div><div>${escapeHTML(account.tax_id || '-')}</div>
         <div class="meta-label">จำนวนรถ</div><div>${escapeHTML(String(account.cars_estimate || '-'))}</div>
+        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterName('leadChannels', account.lead_channel_id))}</div>
         <div class="meta-label">Lead Source</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
         <div class="meta-label">Campaign</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
+        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterName('businessTypes', account.business_type_id))}</div>
+        <div class="meta-label">GPS ปัจจุบัน</div><div>${escapeHTML(account.current_gps_provider || '-')}</div>
+        <div class="meta-label">ที่อยู่</div><div>${escapeHTML(account.address || '-')}</div>
         <div class="meta-label">สถานะการติดต่อ</div><div>${escapeHTML(masterName('contactStatuses', account.contact_status_id))}</div>
         <div class="meta-label">Modules</div><div>${escapeHTML(accountModuleNames(account.id).join(', ') || '-')}</div>
         <div class="meta-label">รายละเอียด</div><div>${escapeHTML(account.product_interest || account.initial_note || '-')}</div>
@@ -1081,11 +1126,20 @@ function renderAccountOverviewForm(account) {
       <div class="form-grid">
         ${inputField('company_name', 'ชื่อบริษัท', 'text', false, account.company_name || '', disabled)}
         ${inputField('short_name', 'Short Name', 'text', false, account.short_name || '', disabled)}
+        ${inputField('legacy_account_id', 'Account ID จากระบบเดิม', 'text', false, account.legacy_account_id || '', disabled)}
         ${inputField('tax_id', 'Tax ID', 'text', false, account.tax_id || '', disabled)}
         ${inputField('cars_estimate', 'จำนวนรถ', 'number', false, account.cars_estimate || '', disabled)}
+        ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', false, account.lead_channel_id || '', disabled)}
         ${selectField('lead_source_id', 'แหล่งที่มา Lead', state.cache.leadSources, 'id', 'name', false, account.lead_source_id || '', disabled)}
         ${selectField('campaign_id', 'แคมเปญ', state.cache.campaigns, 'id', 'name', false, account.campaign_id || '', disabled)}
+        ${selectField('business_type_id', 'ธุรกิจ', state.cache.businessTypes, 'id', 'name', false, account.business_type_id || '', disabled)}
         ${selectField('contact_status_id', 'สถานะการติดต่อ', state.cache.contactStatuses, 'id', 'name', false, account.contact_status_id || '', disabled)}
+        ${inputField('current_gps_provider', 'GPS ปัจจุบัน', 'text', false, account.current_gps_provider || '', disabled)}
+        <div class="field full" data-field="address">
+          <label>ที่อยู่</label>
+          <textarea name="address" ${disabled}>${escapeHTML(account.address || '')}</textarea>
+          <div class="field-error" data-field-error="address"></div>
+        </div>
         ${multiSelectField('module_ids', 'Modules', state.cache.modules, 'id', 'module_name', accountModuleIds(account.id), disabled)}
         <div class="field full">
           <label>รายละเอียด / Product Interest</label>
@@ -1105,8 +1159,9 @@ function renderContactsCard(account) {
   const rows = contacts.map((c) => `
     <tr>
       <td>${escapeHTML(c.contact_name || '-')}</td>
-      <td>${escapeHTML(c.email || '-')}</td>
-      <td>${escapeHTML(c.phone || '-')}</td>
+      <td>${escapeHTML(c.position || '-')}</td>
+      <td>${escapeHTML([c.phone, c.phone_2, c.phone_3].filter(Boolean).join(', ') || '-')}</td>
+      <td>${escapeHTML([c.email, c.email_2].filter(Boolean).join(', ') || '-')}</td>
       <td>${escapeHTML(c.contact_role || '-')}</td>
     </tr>
   `).join('')
@@ -1119,8 +1174,8 @@ function renderContactsCard(account) {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ชื่อ</th><th>Email</th><th>Phone</th><th>Role</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="4" class="empty">ยังไม่มีผู้ติดต่อ</td></tr>'}</tbody>
+          <thead><tr><th>ชื่อ</th><th>ตำแหน่ง</th><th>Phone</th><th>Email</th><th>Role</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="5" class="empty">ยังไม่มีผู้ติดต่อ</td></tr>'}</tbody>
         </table>
       </div>
     </div>
@@ -1419,8 +1474,11 @@ function renderAccountMeta(account) {
         <div class="meta-label">Source</div><div>${escapeHTML(account.source_type || '-')}</div>
         <div class="meta-label">Sale Owner</div><div>${escapeHTML(displayUser(account.sale_owner_id))}</div>
         <div class="meta-label">CS Owners</div><div>${escapeHTML(csOwners)}</div>
+        <div class="meta-label">Account ID เดิม</div><div>${escapeHTML(account.legacy_account_id || '-')}</div>
+        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterName('leadChannels', account.lead_channel_id))}</div>
         <div class="meta-label">Lead Source</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
         <div class="meta-label">Campaign</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
+        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterName('businessTypes', account.business_type_id))}</div>
         <div class="meta-label">Contacts</div><div>${contacts.length}</div>
         <div class="meta-label">Created</div><div>${formatDateTime(account.created_at)}</div>
         <div class="meta-label">Updated</div><div>${formatDateTime(account.updated_at)}</div>
@@ -1518,8 +1576,10 @@ function renderCollectionToolbar(key, type, rawTotal, filteredTotal) {
         ${selectFilter(key, 'owner', 'Owner', [['', 'ทุกคน']].concat(owners.map((p) => [p.id, displayUser(p.id)])), filter.owner || '')}
       </div>
       <div class="filter-row secondary">
+        ${type === 'accounts' ? selectFilter(key, 'channel', 'ช่องทาง', [['', 'ทุกช่องทาง']].concat(state.cache.leadChannels.map((r) => [r.id, r.name])), filter.channel || '') : ''}
         ${type === 'accounts' ? selectFilter(key, 'source', 'Lead Source', [['', 'ทุกแหล่ง']].concat(state.cache.leadSources.map((r) => [r.id, r.name])), filter.source || '') : ''}
         ${type === 'accounts' ? selectFilter(key, 'campaign', 'Campaign', [['', 'ทุกแคมเปญ']].concat(state.cache.campaigns.map((r) => [r.id, r.name])), filter.campaign || '') : ''}
+        ${type === 'accounts' ? selectFilter(key, 'businessType', 'ธุรกิจ', [['', 'ทุกธุรกิจ']].concat(state.cache.businessTypes.map((r) => [r.id, r.name])), filter.businessType || '') : ''}
         ${type === 'tasks' ? selectFilter(key, 'priority', 'Priority', [['', 'ทุก Priority'], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['urgent', 'urgent']], filter.priority || '') : ''}
         ${selectFilter(key, 'sort', 'Sort', sortOptionsFor(type), filter.sort || '')}
         ${selectFilter(key, 'pageSize', 'Rows', [['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']], String(filter.pageSize || 25))}
@@ -1583,8 +1643,8 @@ function getFilter(key) {
 
 
 function defaultFilter(key) {
-  if (key === 'leads') return { q: '', stage: 'lead', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-  if (key === 'accounts') return { q: '', stage: '', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  if (key === 'leads') return { q: '', stage: 'lead', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  if (key === 'accounts') return { q: '', stage: '', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 }
   if (key === 'tasks') return { q: '', status: '', owner: '', priority: '', sort: 'due_asc', page: 1, pageSize: 25 }
   if (key === 'training') return { q: '', status: '', owner: '', sort: 'date_asc', page: 1, pageSize: 25 }
   if (key === 'demo' || key === 'customers') return { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 }
@@ -1604,8 +1664,10 @@ function filterCollection(items, filter, type) {
       const ownerFields = [item.sale_owner_id, item.assigned_to, item.trainer_id, item.owner_id, item.cs_owner_id]
       if (!ownerFields.includes(filter.owner)) return false
     }
+    if (filter.channel && item.lead_channel_id !== filter.channel) return false
     if (filter.source && item.lead_source_id !== filter.source) return false
     if (filter.campaign && item.campaign_id !== filter.campaign) return false
+    if (filter.businessType && item.business_type_id !== filter.businessType) return false
     if (filter.priority && item.priority !== filter.priority) return false
     return true
   })
@@ -1619,13 +1681,18 @@ function matchesSearch(item, q, type) {
     account?.company_name,
     account?.short_name,
     account?.tax_id,
+    account?.legacy_account_id,
+    account?.address,
+    account?.current_gps_provider,
+    masterName('leadChannels', account?.lead_channel_id),
+    masterName('businessTypes', account?.business_type_id),
     account?.initial_note,
     account?.product_interest,
     item.title,
     item.description,
     item.training_detail,
     item.issue_note,
-    ...contacts.flatMap((c) => [c.contact_name, c.email, c.phone])
+    ...contacts.flatMap((c) => [c.contact_name, c.position, c.email, c.email_2, c.phone, c.phone_2, c.phone_3])
   ].filter(Boolean).join(' ').toLowerCase()
   return haystack.includes(q)
 }
@@ -1668,8 +1735,9 @@ function renderAccountTable(items) {
       <td>${badge(a.lifecycle_stage)}</td>
       <td>${badge(a.lifecycle_status || '-')}</td>
       <td>${escapeHTML(displayUser(a.sale_owner_id))}</td>
-      <td>${escapeHTML(masterName('leadSources', a.lead_source_id))}</td>
+      <td>${escapeHTML(masterName('leadChannels', a.lead_channel_id))}</td>
       <td>${escapeHTML(masterName('campaigns', a.campaign_id))}</td>
+      <td>${escapeHTML(masterName('businessTypes', a.business_type_id))}</td>
       <td>${escapeHTML(String(a.cars_estimate || '-'))}</td>
       <td>${formatDateTime(a.updated_at)}</td>
     </tr>
@@ -1679,7 +1747,7 @@ function renderAccountTable(items) {
     <div class="table-wrap responsive-table">
       <table>
         <thead>
-          <tr><th>No.</th><th>Account</th><th>Stage</th><th>Status</th><th>Sale</th><th>Source</th><th>Campaign</th><th>Cars</th><th>Updated</th></tr>
+          <tr><th>No.</th><th>Account</th><th>Stage</th><th>Status</th><th>Sale</th><th>ช่องทาง</th><th>Campaign</th><th>ธุรกิจ</th><th>Cars</th><th>Updated</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -1699,7 +1767,7 @@ function renderAccountList(items) {
           </div>
           <div class="list-meta">
             ${renderRunningNo(a)} · Sale: ${escapeHTML(displayUser(a.sale_owner_id))} · Cars: ${escapeHTML(String(a.cars_estimate || '-'))}<br>
-            Source: ${escapeHTML(masterName('leadSources', a.lead_source_id))} · Campaign: ${escapeHTML(masterName('campaigns', a.campaign_id))}
+            ช่องทาง: ${escapeHTML(masterName('leadChannels', a.lead_channel_id))} · Campaign: ${escapeHTML(masterName('campaigns', a.campaign_id))} · ธุรกิจ: ${escapeHTML(masterName('businessTypes', a.business_type_id))}
           </div>
           <div class="actions"><button class="btn small" type="button" data-nav-account="${a.id}">Open</button></div>
         </div>
@@ -1878,8 +1946,12 @@ function renderAddContactForm(account) {
   return `
     <form class="form-grid" data-form="add-contact" data-account-id="${account.id}" novalidate>
       ${inputField('contact_name', 'ชื่อผู้ติดต่อ', 'text', true)}
+      ${inputField('position', 'ตำแหน่ง', 'text', false)}
+      ${inputField('phone', 'เบอร์หลัก', 'text', false)}
+      ${inputField('phone_2', 'เบอร์ 2', 'text', false)}
+      ${inputField('phone_3', 'เบอร์ 3', 'text', false)}
       ${inputField('email', 'Email', 'email', false)}
-      ${inputField('phone', 'Phone', 'text', false)}
+      ${inputField('email_2', 'Email 2', 'email', false)}
       ${selectStaticField('contact_role', 'Role', ['primary', 'billing', 'technical', 'user', 'decision_maker', 'other'], false, 'primary')}
       <div class="full actions"><button class="btn primary" type="submit">Add Contact</button></div>
     </form>
@@ -2255,12 +2327,15 @@ async function refreshData() {
 async function createMktLead(form) {
   const values = formValues(form)
   ensureLeadMinimum(values)
+  ensureRequired(values, 'lead_channel_id', 'ต้องเลือกช่องทาง', ['lead_channel_id'])
   const { data, error } = await state.client.rpc('create_mkt_lead', {
+    p_legacy_account_id: nullIfBlank(values.legacy_account_id),
     p_company_name: nullIfBlank(values.company_name),
     p_contact_name: nullIfBlank(values.contact_name),
     p_phone: nullIfBlank(values.phone),
     p_email: nullIfBlank(values.email),
     p_lead_source_id: nullIfBlank(values.lead_source_id),
+    p_lead_channel_id: nullIfBlank(values.lead_channel_id),
     p_campaign_id: nullIfBlank(values.campaign_id),
     p_initial_note: nullIfBlank(values.initial_note),
     p_cars_estimate: numberOrNull(values.cars_estimate),
@@ -2281,17 +2356,39 @@ async function createMktLead(form) {
 async function createSalesLead(form) {
   const values = formValues(form)
   ensureLeadMinimum(values)
+  ensureRequired(values, 'lead_channel_id', 'ต้องเลือกช่องทาง', ['lead_channel_id'])
   const { data, error } = await state.client.rpc('create_sales_lead', {
+    p_legacy_account_id: nullIfBlank(values.legacy_account_id),
     p_company_name: nullIfBlank(values.company_name),
     p_contact_name: nullIfBlank(values.contact_name),
+    p_position: nullIfBlank(values.position),
     p_phone: nullIfBlank(values.phone),
+    p_phone_2: nullIfBlank(values.phone_2),
+    p_phone_3: nullIfBlank(values.phone_3),
     p_email: nullIfBlank(values.email),
-    p_contact_status_id: nullIfBlank(values.contact_status_id),
+    p_email_2: nullIfBlank(values.email_2),
+    p_tax_id: nullIfBlank(values.tax_id),
+    p_address: nullIfBlank(values.address),
+    p_business_type_id: nullIfBlank(values.business_type_id),
+    p_lead_channel_id: nullIfBlank(values.lead_channel_id),
     p_initial_note: nullIfBlank(values.initial_note),
     p_cars_estimate: numberOrNull(values.cars_estimate),
+    p_current_gps_provider: nullIfBlank(values.current_gps_provider),
     p_module_ids: values.module_ids || []
   })
   if (error) throw error
+
+  if (nullIfBlank(values.note)) {
+    const { error: noteError } = await state.client.from(TABLES.activities).insert({
+      account_id: data,
+      activity_type: 'sale_update',
+      title: 'Sale note',
+      content: values.note,
+      created_by: state.user.id
+    })
+    if (noteError) throw noteError
+  }
+
   form.reset()
   await refreshData()
   const account = state.cache.accounts.find((item) => item.id === data)
@@ -2299,12 +2396,19 @@ async function createSalesLead(form) {
 }
 
 function ensureLeadMinimum(values) {
-  const hasMinimum = [values.company_name, values.contact_name, values.phone, values.email, values.initial_note]
+  const hasMinimum = [values.company_name, values.contact_name, values.phone, values.phone_2, values.phone_3, values.email, values.email_2, values.initial_note, values.legacy_account_id]
     .some((value) => String(value || '').trim())
   if (!hasMinimum) {
     throw createValidationError('ต้องกรอกข้อมูลขั้นต่ำอย่างน้อย 1 อย่าง เช่น ผู้ติดต่อ เบอร์ อีเมล รายละเอียด หรือชื่อบริษัท', ['company_name', 'contact_name', 'phone', 'email', 'initial_note'])
   }
 }
+
+function ensureRequired(values, fieldName, message, fieldNames = [fieldName]) {
+  if (!String(values[fieldName] || '').trim()) {
+    throw createValidationError(message, fieldNames)
+  }
+}
+
 
 async function saveAccountOverview(form) {
   const accountId = form.dataset.accountId
@@ -2312,11 +2416,16 @@ async function saveAccountOverview(form) {
   const payload = {
     company_name: nullIfBlank(values.company_name),
     short_name: nullIfBlank(values.short_name),
+    legacy_account_id: nullIfBlank(values.legacy_account_id),
     tax_id: nullIfBlank(values.tax_id),
+    address: nullIfBlank(values.address),
     cars_estimate: numberOrNull(values.cars_estimate),
+    lead_channel_id: nullIfBlank(values.lead_channel_id),
     lead_source_id: nullIfBlank(values.lead_source_id),
     campaign_id: nullIfBlank(values.campaign_id),
+    business_type_id: nullIfBlank(values.business_type_id),
     contact_status_id: nullIfBlank(values.contact_status_id),
+    current_gps_provider: nullIfBlank(values.current_gps_provider),
     product_interest: nullIfBlank(values.product_interest)
   }
 
@@ -2350,8 +2459,12 @@ async function addContact(form) {
   const payload = {
     account_id: form.dataset.accountId,
     contact_name: values.contact_name,
+    position: nullIfBlank(values.position),
     email: nullIfBlank(values.email),
+    email_2: nullIfBlank(values.email_2),
     phone: nullIfBlank(values.phone),
+    phone_2: nullIfBlank(values.phone_2),
+    phone_3: nullIfBlank(values.phone_3),
     contact_role: nullIfBlank(values.contact_role),
     created_by: state.user.id
   }
@@ -2711,6 +2824,26 @@ function roleLabel(role) {
 function fieldId(name) {
   fieldSeq += 1
   return `${name}-${fieldSeq}`
+}
+
+
+function readonlyDisplay(name, label, value) {
+  const id = fieldId(name)
+  return `
+    <div class="field readonly-field" data-field="${escapeAttr(name)}">
+      <label for="${escapeAttr(id)}">${escapeHTML(label)}</label>
+      <input id="${escapeAttr(id)}" type="text" value="${escapeAttr(value || '-')}" disabled>
+      <div class="help">ข้อมูลนี้ระบบจัดการให้อัตโนมัติ</div>
+    </div>
+  `
+}
+
+function activeSalesNames() {
+  const sales = state.cache.profiles
+    .filter((profile) => profile.role === ROLES.SALE && profile.is_active)
+    .map((profile) => displayUser(profile.id))
+    .filter(Boolean)
+  return sales.length ? `ระบบจะวน assign ให้ Sale active: ${sales.join(', ')}` : ''
 }
 
 function inputField(name, label, type, required, value = '', disabled = '') {
