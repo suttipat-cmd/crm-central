@@ -1,12 +1,12 @@
 
 /*
   Internal CRM Ops
-  Version: 1.0.2
+  Version: 1.1.0
   Stack: GitHub Pages + Supabase
   Files: README.md, index.html, script.js, style.css
 */
 
-const APP_VERSION = '1.0.2'
+const APP_VERSION = '1.1.0'
 
 const CONFIG = {
   supabaseUrl: 'https://eplqmkiftafkvqdgvsfp.supabase.co',
@@ -24,6 +24,7 @@ const ROLES = {
 
 const ROUTES = [
   { key: 'dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'mkt', 'sale', 'cs', 'manager'] },
+  { key: 'my-work', label: 'My Work', icon: '🧭', roles: ['admin', 'mkt', 'sale', 'cs', 'manager'] },
   { key: 'leads', label: 'Leads', icon: '🎯', roles: ['admin', 'mkt', 'sale', 'manager'] },
   { key: 'accounts', label: 'Accounts', icon: '🏢', roles: ['admin', 'mkt', 'sale', 'cs', 'manager'] },
   { key: 'demo', label: 'Demo', icon: '🧪', roles: ['admin', 'sale', 'cs', 'manager'] },
@@ -100,6 +101,16 @@ const state = {
     tasks: 'board',
     training: 'calendar'
   },
+  filters: {
+    leads: { q: '', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 },
+    accounts: { q: '', stage: '', status: '', owner: '', source: '', campaign: '', sort: 'updated_desc', page: 1, pageSize: 25 },
+    demo: { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 },
+    customers: { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 },
+    tasks: { q: '', status: '', owner: '', priority: '', sort: 'due_asc', page: 1, pageSize: 25 },
+    training: { q: '', status: '', owner: '', sort: 'date_asc', page: 1, pageSize: 25 }
+  },
+  accountTabs: {},
+  lastSyncedAt: null,
   cache: {
     profiles: [],
     accounts: [],
@@ -127,12 +138,15 @@ const state = {
 
 const app = document.getElementById('app')
 const toastRoot = document.getElementById('toast-root')
+let filterTimer = null
+let fieldSeq = 0
 
 document.addEventListener('DOMContentLoaded', init)
 window.addEventListener('hashchange', () => render())
 document.addEventListener('click', onClick)
 document.addEventListener('submit', onSubmit)
 document.addEventListener('change', onChange)
+document.addEventListener('input', onInput)
 
 async function init() {
   if (!isConfigured()) {
@@ -277,6 +291,7 @@ async function loadAllData() {
   for (const [cacheKey, rows] of results) {
     state.cache[cacheKey] = rows
   }
+  state.lastSyncedAt = new Date().toISOString()
 }
 
 function render() {
@@ -296,28 +311,47 @@ function render() {
   }
 
   const route = getRoute()
+
+  if (route.key === 'unauthorized') {
+    app.innerHTML = renderAppLayout('ไม่มีสิทธิ์เข้าถึง', renderUnauthorized(), '')
+    return
+  }
+
+  if (route.key === 'not-found') {
+    app.innerHTML = renderAppLayout('ไม่พบหน้า', renderNotFound(), '')
+    return
+  }
+
   const nav = route.key === 'account'
     ? { key: 'accounts', label: 'Account Detail', roles: ['admin', 'mkt', 'sale', 'cs', 'manager'] }
     : ROUTES.find((item) => item.key === route.key)
 
-  if (!nav || !hasRole(nav.roles)) {
-    location.hash = '#/dashboard'
+  if (!nav) {
+    app.innerHTML = renderAppLayout('ไม่พบหน้า', renderNotFound(), '')
     return
   }
 
-  app.innerHTML = `
+  if (!hasRole(nav.roles)) {
+    app.innerHTML = renderAppLayout('ไม่มีสิทธิ์เข้าถึง', renderUnauthorized(), '')
+    return
+  }
+
+  app.innerHTML = renderAppLayout(nav.label, renderRoute(route), nav.key)
+}
+
+function renderAppLayout(title, content, activeKey) {
+  return `
     <div class="app-layout">
-      ${renderSidebar(nav.key)}
+      ${renderSidebar(activeKey)}
       <main class="main">
-        ${renderTopbar(nav.label)}
+        ${renderTopbar(title)}
         <section class="content" id="page-content">
-          ${renderRoute(route)}
+          ${content}
         </section>
       </main>
     </div>
   `
 }
-
 function renderSidebar(activeKey) {
   const links = ROUTES
     .filter((item) => hasRole(item.roles))
@@ -350,18 +384,20 @@ function renderTopbar(title) {
     <header class="topbar">
       <div>
         <h1>${escapeHTML(title)}</h1>
+        <div class="topbar-meta">อัปเดตล่าสุด: ${state.lastSyncedAt ? formatDateTime(state.lastSyncedAt) : '-'}</div>
       </div>
       <div class="user-chip">
         <span>${escapeHTML(state.profile.display_name || state.profile.email || '')}</span>
+        <span class="role-pill">${escapeHTML(roleLabel(state.profile.role))}</span>
         <button class="btn small" type="button" data-action="refresh-data">Refresh</button>
         <button class="btn small" type="button" data-action="logout">Logout</button>
       </div>
     </header>
   `
 }
-
 function renderRoute(route) {
   if (route.key === 'dashboard') return renderDashboard()
+  if (route.key === 'my-work') return renderMyWork()
   if (route.key === 'leads') return renderLeads()
   if (route.key === 'accounts') return renderAccounts()
   if (route.key === 'account') return renderAccountDetail(route.id)
@@ -371,7 +407,9 @@ function renderRoute(route) {
   if (route.key === 'training') return renderTraining()
   if (route.key === 'reports') return renderReports()
   if (route.key === 'admin') return renderAdmin()
-  return renderDashboard()
+  if (route.key === 'unauthorized') return renderUnauthorized()
+  if (route.key === 'not-found') return renderNotFound()
+  return renderNotFound()
 }
 
 function getRoute() {
@@ -419,36 +457,47 @@ function renderLoading(message) {
 
 function renderLogin() {
   app.innerHTML = `
-    <div class="center-screen">
-      <form class="login-card" data-form="login">
-        <h1>Internal CRM Ops</h1>
-        <p>เข้าสู่ระบบด้วยบัญชีที่สร้างไว้ใน Supabase Auth</p>
+    <div class="center-screen auth-screen">
+      <form class="login-card" data-form="login" novalidate>
+        <div class="brand-lockup">
+          <div class="brand-mark">CRM</div>
+          <div>
+            <h1>Internal CRM Ops</h1>
+            <p>ระบบจัดการ Lead, Demo, Customer, Training และ Task สำหรับทีมภายใน</p>
+          </div>
+        </div>
         <div class="form-grid single">
           <div class="field">
-            <label>Email</label>
-            <input name="email" type="email" required autocomplete="email">
+            <label for="login-email">อีเมลองค์กร</label>
+            <input id="login-email" name="email" type="email" required autocomplete="email" placeholder="name@company.com">
           </div>
           <div class="field">
-            <label>Password</label>
-            <input name="password" type="password" required autocomplete="current-password">
+            <label for="login-password">รหัสผ่าน</label>
+            <input id="login-password" name="password" type="password" required autocomplete="current-password" placeholder="กรอกรหัสผ่าน">
           </div>
-          <button class="btn primary" type="submit">Login</button>
+          <button class="btn primary block" type="submit">เข้าสู่ระบบ</button>
         </div>
+        <div class="auth-help">
+          <strong>เข้าไม่ได้?</strong> ตรวจสอบว่า Admin เปิดสิทธิ์และตั้ง role ให้บัญชีนี้แล้ว หากลืมรหัสผ่านให้รีเซ็ตจาก Supabase Auth หรือติดต่อผู้ดูแลระบบ
+        </div>
+        <div class="login-foot">Production · v${APP_VERSION}</div>
       </form>
     </div>
   `
 }
-
 function renderPending() {
   app.innerHTML = `
-    <div class="center-screen">
+    <div class="center-screen auth-screen">
       <div class="pending-card">
         <h1>บัญชียังไม่พร้อมใช้งาน</h1>
-        <p>Admin ต้องกำหนด role และเปิด <code>is_active</code> ในหน้า Admin หรือในตาราง <code>profiles</code> ก่อน</p>
+        <p>บัญชีนี้เข้าสู่ระบบได้แล้ว แต่ยังต้องให้ Admin กำหนด role และเปิดสถานะ Active ก่อนใช้งานระบบ</p>
         <div class="meta-grid">
           <div class="meta-label">Email</div><div>${escapeHTML(state.user.email || '')}</div>
           <div class="meta-label">Role</div><div>${escapeHTML(state.profile?.role || 'pending')}</div>
           <div class="meta-label">Active</div><div>${state.profile?.is_active ? 'Yes' : 'No'}</div>
+        </div>
+        <div class="callout warning">
+          แจ้ง Admin ให้เข้าเมนู Admin Settings → Users / Roles แล้วตั้ง role และ status เป็น Active
         </div>
         <hr>
         <button class="btn" type="button" data-action="logout">Logout</button>
@@ -456,7 +505,6 @@ function renderPending() {
     </div>
   `
 }
-
 function renderDashboard() {
   const accounts = state.cache.accounts
   const leads = accounts.filter((a) => a.lifecycle_stage === 'lead')
@@ -474,6 +522,7 @@ function renderDashboard() {
         <p>สรุป Lead, Demo, Customer, Lost, Task และ Training ตามสิทธิ์ของผู้ใช้</p>
       </div>
       <div class="actions">
+        <button class="btn primary" type="button" data-nav="my-work">ดูงานของฉัน</button>
         <button class="btn" type="button" data-action="print">Print</button>
       </div>
     </div>
@@ -503,6 +552,86 @@ function renderDashboard() {
     </div>
   `
 }
+
+function renderMyWork() {
+  const accounts = state.cache.accounts
+  const tasks = state.cache.tasks.filter((task) => task.assigned_to === state.user.id || isAdmin() || isManager())
+  const openTasks = tasks.filter((task) => !['done', 'cancelled'].includes(task.status))
+  const overdue = openTasks.filter((task) => task.due_at && new Date(task.due_at) < startOfToday())
+  const todayTasks = openTasks.filter((task) => datePart(task.due_at) === todayISO())
+  const myLeads = accounts.filter((account) => account.lifecycle_stage === 'lead' && (account.sale_owner_id === state.user.id || isAdmin() || isManager()))
+  const demoEndingSoon = state.cache.demos
+    .filter((demo) => demo.end_date && ['requested', 'active', 'extended'].includes(demo.demo_status || ''))
+    .filter((demo) => daysFromToday(demo.end_date) <= 7 && daysFromToday(demo.end_date) >= 0)
+
+  return `
+    <div class="page-header">
+      <div>
+        <h2>งานของฉัน</h2>
+        <p>รวมรายการที่ควรทำต่อวันนี้ แยกตามสิทธิ์และบทบาทของผู้ใช้</p>
+      </div>
+      <div class="actions">
+        <button class="btn" type="button" data-action="refresh-data">Refresh</button>
+      </div>
+    </div>
+
+    <div class="grid grid-4">
+      ${renderKpi('Lead ที่ดูแล', myLeads.length, 'Lead ที่ต้องติดตาม')}
+      ${renderKpi('Task วันนี้', todayTasks.length, 'ครบกำหนดวันนี้')}
+      ${renderKpi('Overdue', overdue.length, 'เลยกำหนด')}
+      ${renderKpi('Demo ใกล้หมด', demoEndingSoon.length, 'ภายใน 7 วัน')}
+    </div>
+
+    <div class="grid grid-2" style="margin-top:16px">
+      <div class="card">
+        <h3>งานที่ต้องทำก่อน</h3>
+        ${renderTaskList(overdue.concat(todayTasks).slice(0, 8), true)}
+      </div>
+      <div class="card">
+        <h3>Lead ที่ควรติดตาม</h3>
+        ${renderAccountList(myLeads.slice(0, 8))}
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Demo ใกล้หมดอายุ</h3>
+      ${simpleRowsTable(['Account', 'Status', 'Start', 'End', ''], demoEndingSoon.map((demo) => [
+        accountTitle(findAccount(demo.account_id)),
+        badge(demo.demo_status || '-'),
+        formatDate(demo.start_date),
+        formatDate(demo.end_date),
+        `<button class="btn small" type="button" data-nav-account="${demo.account_id}">Open</button>`
+      ]))}
+    </div>
+  `
+}
+
+function renderUnauthorized() {
+  return `
+    <div class="center-card">
+      <h2>คุณไม่มีสิทธิ์เข้าหน้านี้</h2>
+      <p class="muted">สิทธิ์ปัจจุบันของคุณคือ ${escapeHTML(roleLabel(state.profile?.role || 'pending'))} หากคิดว่าเป็นข้อผิดพลาด กรุณาติดต่อ Admin เพื่อปรับ role หรือ active status</p>
+      <div class="actions">
+        <button class="btn primary" type="button" data-nav="dashboard">กลับ Dashboard</button>
+        <button class="btn" type="button" data-action="refresh-data">Refresh สิทธิ์</button>
+      </div>
+    </div>
+  `
+}
+
+function renderNotFound() {
+  return `
+    <div class="center-card">
+      <h2>ไม่พบหน้าที่ต้องการ</h2>
+      <p class="muted">ลิงก์อาจไม่ถูกต้อง หรือรายการนี้อาจถูกลบ/ไม่มีสิทธิ์เข้าถึง</p>
+      <div class="actions">
+        <button class="btn primary" type="button" data-nav="dashboard">กลับ Dashboard</button>
+        <button class="btn" type="button" data-nav="accounts">ไปหน้า Accounts</button>
+      </div>
+    </div>
+  `
+}
+
 
 function renderKpi(label, value, hint) {
   return `
@@ -833,12 +962,26 @@ function renderMasterAdmin(config) {
 function renderAccountDetail(accountId) {
   const account = state.cache.accounts.find((item) => item.id === accountId)
   if (!account) {
-    return `
-      <div class="card">
-        <h2>ไม่พบ Account</h2>
-        <p class="muted">อาจไม่มีสิทธิ์เข้าถึง หรือข้อมูลถูกลบ</p>
-      </div>
-    `
+    return renderNotFound()
+  }
+
+  const activeTab = state.accountTabs[accountId] || 'overview'
+  const tabs = [
+    ['overview', 'ภาพรวม'],
+    ['demo', 'Demo'],
+    ['training', 'Training'],
+    ['customer', 'Customer'],
+    ['tasks', 'Tasks'],
+    ['history', 'History']
+  ]
+
+  const contentByTab = {
+    overview: `${renderAccountOverviewForm(account)}${renderContactsCard(account)}${renderActivitiesCard(account)}`,
+    demo: renderDemoCard(account),
+    training: renderTrainingCard(account),
+    customer: renderCustomerCard(account),
+    tasks: renderTasksCard(account),
+    history: `${renderHistoryCard(account)}${renderActivitiesCard(account)}`
   }
 
   return `
@@ -853,25 +996,26 @@ function renderAccountDetail(accountId) {
       </div>
     </div>
 
+    <div class="tabs account-tabs" role="tablist" aria-label="Account sections">
+      ${tabs.map(([key, label]) => `
+        <button class="tab ${activeTab === key ? 'active' : ''}" type="button" role="tab" aria-selected="${activeTab === key ? 'true' : 'false'}" data-account-tab="${key}" data-account-id="${account.id}">
+          ${escapeHTML(label)}
+        </button>
+      `).join('')}
+    </div>
+
     <div class="detail-layout">
       <div class="stack">
-        ${renderAccountOverviewForm(account)}
-        ${renderContactsCard(account)}
-        ${renderActivitiesCard(account)}
-        ${renderDemoCard(account)}
-        ${renderTrainingCard(account)}
-        ${renderCustomerCard(account)}
-        ${renderTasksCard(account)}
+        ${contentByTab[activeTab] || contentByTab.overview}
       </div>
-      <aside class="stack">
+      <aside class="stack sticky-side">
         ${renderAccountActions(account)}
         ${renderAccountMeta(account)}
-        ${renderHistoryCard(account)}
+        ${activeTab !== 'history' ? renderHistoryCard(account) : ''}
       </aside>
     </div>
   `
 }
-
 function renderAccountOverviewForm(account) {
   const disabled = isReadOnly() ? 'disabled' : ''
   return `
@@ -1252,16 +1396,203 @@ function renderViewSwitcher(key) {
 }
 
 function renderAccountsCollection(items, key) {
+  const prepared = prepareCollection(items, key, 'accounts')
   const mode = state.viewModes[key] || 'table'
-  if (mode === 'board') return renderAccountBoard(items, key)
-  if (mode === 'calendar') return renderAccountCalendar(items)
-  if (mode === 'list') return renderAccountList(items)
-  if (mode === 'timeline') return renderAccountTimeline(items)
-  return renderAccountTable(items)
+  let body = ''
+  if (mode === 'board') body = renderAccountBoard(prepared.items, key)
+  else if (mode === 'calendar') body = renderAccountCalendar(prepared.items)
+  else if (mode === 'list') body = renderAccountList(prepared.items)
+  else if (mode === 'timeline') body = renderAccountTimeline(prepared.items)
+  else body = renderAccountTable(prepared.items)
+
+  return `
+    ${renderCollectionToolbar(key, 'accounts', items.length, prepared.total)}
+    ${body}
+    ${renderPagination(key, prepared)}
+  `
+}
+
+function renderTaskCollection(items, key) {
+  const prepared = prepareCollection(items, key, 'tasks')
+  const mode = state.viewModes[key] || 'board'
+  let body = ''
+  if (mode === 'board') body = renderTaskBoard(prepared.items)
+  else if (mode === 'calendar') body = renderCalendarEvents(prepared.items.map((task) => ({ date: datePart(task.due_at), title: `Task: ${task.title}`, accountId: task.account_id })))
+  else if (mode === 'timeline') body = renderTimelineEvents(prepared.items.map((task) => ({ title: task.title, start: datePart(task.created_at), end: datePart(task.due_at), accountId: task.account_id })))
+  else if (mode === 'list') body = renderTaskList(prepared.items, false)
+  else body = renderTaskTable(prepared.items)
+
+  return `
+    ${renderCollectionToolbar(key, 'tasks', items.length, prepared.total)}
+    ${body}
+    ${renderPagination(key, prepared)}
+  `
+}
+
+function renderTrainingCollection(items, key) {
+  const prepared = prepareCollection(items, key, 'training')
+  const mode = state.viewModes[key] || 'calendar'
+  let body = ''
+  if (mode === 'calendar') body = renderCalendarEvents(prepared.items.map((t) => ({ date: t.training_date, title: `Training #${t.session_no}: ${accountTitle(findAccount(t.account_id))}`, accountId: t.account_id })))
+  else if (mode === 'timeline') body = renderTimelineEvents(prepared.items.map((t) => ({ title: `Training #${t.session_no}: ${accountTitle(findAccount(t.account_id))}`, start: t.training_date, end: t.training_date, accountId: t.account_id })))
+  else if (mode === 'board') body = renderTrainingBoard(prepared.items)
+  else if (mode === 'list') body = renderTrainingList(prepared.items)
+  else body = renderTrainingTable(prepared.items)
+
+  return `
+    ${renderCollectionToolbar(key, 'training', items.length, prepared.total)}
+    ${body}
+    ${renderPagination(key, prepared)}
+  `
+}
+
+function renderCollectionToolbar(key, type, rawTotal, filteredTotal) {
+  const filter = getFilter(key)
+  const owners = state.cache.profiles.filter((p) => p.is_active || p.role !== ROLES.PENDING)
+  return `
+    <div class="filter-panel" data-filter-panel="${key}">
+      <div class="filter-row">
+        <label class="search-field">
+          <span>ค้นหา</span>
+          <input type="search" value="${escapeAttr(filter.q || '')}" data-filter-control data-filter-key="${key}" data-filter-name="q" placeholder="ค้นหาชื่อบริษัท, ผู้ติดต่อ, เบอร์, อีเมล, Running No.">
+        </label>
+        ${type === 'accounts' ? selectFilter(key, 'stage', 'Stage', [['', 'ทั้งหมด'], ['lead', 'Lead'], ['demo', 'Demo'], ['customer', 'Customer'], ['lost', 'Lost']], filter.stage || '') : ''}
+        ${type === 'accounts' || type === 'tasks' || type === 'training' ? selectFilter(key, 'status', 'Status', filterOptionsFor(type, key, 'status'), filter.status || '') : ''}
+        ${selectFilter(key, 'owner', 'Owner', [['', 'ทุกคน']].concat(owners.map((p) => [p.id, displayUser(p.id)])), filter.owner || '')}
+      </div>
+      <div class="filter-row secondary">
+        ${type === 'accounts' ? selectFilter(key, 'source', 'Lead Source', [['', 'ทุกแหล่ง']].concat(state.cache.leadSources.map((r) => [r.id, r.name])), filter.source || '') : ''}
+        ${type === 'accounts' ? selectFilter(key, 'campaign', 'Campaign', [['', 'ทุกแคมเปญ']].concat(state.cache.campaigns.map((r) => [r.id, r.name])), filter.campaign || '') : ''}
+        ${type === 'tasks' ? selectFilter(key, 'priority', 'Priority', [['', 'ทุก Priority'], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['urgent', 'urgent']], filter.priority || '') : ''}
+        ${selectFilter(key, 'sort', 'Sort', sortOptionsFor(type), filter.sort || '')}
+        ${selectFilter(key, 'pageSize', 'Rows', [['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']], String(filter.pageSize || 25))}
+        <button class="btn small" type="button" data-action="clear-filters" data-filter-key="${key}">Clear</button>
+        <span class="result-count">แสดง ${filteredTotal} จาก ${rawTotal} รายการ</span>
+      </div>
+    </div>
+  `
+}
+
+function selectFilter(key, name, label, options, selected) {
+  return `
+    <label class="filter-control">
+      <span>${escapeHTML(label)}</span>
+      <select data-filter-control data-filter-key="${key}" data-filter-name="${name}">
+        ${options.map(([value, text]) => `<option value="${escapeAttr(value)}" ${String(selected) === String(value) ? 'selected' : ''}>${escapeHTML(text)}</option>`).join('')}
+      </select>
+    </label>
+  `
+}
+
+function filterOptionsFor(type, key, name) {
+  if (type === 'tasks') return [['', 'ทุกสถานะ'], ['open', 'open'], ['in_progress', 'in_progress'], ['blocked', 'blocked'], ['done', 'done'], ['cancelled', 'cancelled']]
+  if (type === 'training') return [['', 'ทุกสถานะ'], ['planned', 'planned'], ['done', 'done'], ['cancelled', 'cancelled']]
+  return [['', 'ทุกสถานะ'], ['new', 'new'], ['assigned', 'assigned'], ['contacted', 'contacted'], ['follow_up', 'follow_up'], ['demo_requested', 'demo_requested'], ['customer_active', 'customer_active'], ['lost', 'lost'], ['churned', 'churned']]
+}
+
+function sortOptionsFor(type) {
+  if (type === 'tasks') return [['due_asc', 'Due date ใกล้สุด'], ['updated_desc', 'อัปเดตล่าสุด'], ['priority_desc', 'Priority สูงสุด']]
+  if (type === 'training') return [['date_asc', 'วันที่ใกล้สุด'], ['updated_desc', 'อัปเดตล่าสุด']]
+  return [['updated_desc', 'อัปเดตล่าสุด'], ['created_desc', 'สร้างล่าสุด'], ['running_asc', 'Running No. น้อยไปมาก'], ['name_asc', 'ชื่อ A-Z']]
+}
+
+function prepareCollection(items, key, type) {
+  const filter = getFilter(key)
+  let rows = filterCollection(items, filter, type)
+  rows = sortCollection(rows, filter.sort, type)
+  const total = rows.length
+  const pageSize = Math.max(1, Number(filter.pageSize || 25))
+  const maxPage = Math.max(1, Math.ceil(total / pageSize))
+  const page = Math.min(Math.max(1, Number(filter.page || 1)), maxPage)
+  filter.page = page
+  filter.pageSize = pageSize
+  const start = (page - 1) * pageSize
+  return {
+    items: rows.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+    maxPage
+  }
+}
+
+function getFilter(key) {
+  if (!state.filters[key]) {
+    state.filters[key] = { q: '', sort: 'updated_desc', page: 1, pageSize: 25 }
+  }
+  return state.filters[key]
+}
+
+function filterCollection(items, filter, type) {
+  const q = String(filter.q || '').trim().toLowerCase()
+  return items.filter((item) => {
+    if (q && !matchesSearch(item, q, type)) return false
+    if (filter.stage && item.lifecycle_stage !== filter.stage) return false
+    if (filter.status) {
+      const status = item.lifecycle_status || item.status || item.demo_status || item.customer_status
+      if (status !== filter.status) return false
+    }
+    if (filter.owner) {
+      const ownerFields = [item.sale_owner_id, item.assigned_to, item.trainer_id, item.owner_id, item.cs_owner_id]
+      if (!ownerFields.includes(filter.owner)) return false
+    }
+    if (filter.source && item.lead_source_id !== filter.source) return false
+    if (filter.campaign && item.campaign_id !== filter.campaign) return false
+    if (filter.priority && item.priority !== filter.priority) return false
+    return true
+  })
+}
+
+function matchesSearch(item, q, type) {
+  const account = type === 'tasks' || type === 'training' ? findAccount(item.account_id) : item
+  const contacts = account?.id ? state.cache.contacts.filter((c) => c.account_id === account.id) : []
+  const haystack = [
+    account?.running_no,
+    account?.company_name,
+    account?.short_name,
+    account?.tax_id,
+    account?.initial_note,
+    account?.product_interest,
+    item.title,
+    item.description,
+    item.training_detail,
+    item.issue_note,
+    ...contacts.flatMap((c) => [c.contact_name, c.email, c.phone])
+  ].filter(Boolean).join(' ').toLowerCase()
+  return haystack.includes(q)
+}
+
+function sortCollection(rows, sort, type) {
+  const copy = rows.slice()
+  copy.sort((a, b) => {
+    if (sort === 'created_desc') return String(b.created_at || '').localeCompare(String(a.created_at || ''))
+    if (sort === 'running_asc') return Number(a.running_no || 999999999) - Number(b.running_no || 999999999)
+    if (sort === 'name_asc') return accountTitle(a).localeCompare(accountTitle(b), 'th')
+    if (sort === 'due_asc') return String(a.due_at || '9999').localeCompare(String(b.due_at || '9999'))
+    if (sort === 'date_asc') return String(a.training_date || '9999').localeCompare(String(b.training_date || '9999'))
+    if (sort === 'priority_desc') return priorityWeight(b.priority) - priorityWeight(a.priority)
+    return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''))
+  })
+  return copy
+}
+
+function priorityWeight(priority) {
+  return { urgent: 4, high: 3, medium: 2, low: 1 }[priority] || 0
+}
+
+function renderPagination(key, prepared) {
+  if (prepared.total <= prepared.pageSize) return ''
+  return `
+    <div class="pagination">
+      <button class="btn small" type="button" data-page-key="${key}" data-page-delta="-1" ${prepared.page <= 1 ? 'disabled' : ''}>ก่อนหน้า</button>
+      <span>หน้า ${prepared.page} / ${prepared.maxPage}</span>
+      <button class="btn small" type="button" data-page-key="${key}" data-page-delta="1" ${prepared.page >= prepared.maxPage ? 'disabled' : ''}>ถัดไป</button>
+    </div>
+  `
 }
 
 function renderAccountTable(items) {
-  if (!items.length) return '<div class="empty">ไม่มีข้อมูล</div>'
+  if (!items.length) return emptyState('ไม่พบข้อมูล', 'ลองเปลี่ยนคำค้นหา หรือล้าง filter เพื่อดูรายการทั้งหมด')
   const rows = items.map((a) => `
     <tr>
       <td>${renderRunningNo(a)}</td>
@@ -1277,7 +1608,7 @@ function renderAccountTable(items) {
   `).join('')
 
   return `
-    <div class="table-wrap">
+    <div class="table-wrap responsive-table">
       <table>
         <thead>
           <tr><th>No.</th><th>Account</th><th>Stage</th><th>Status</th><th>Sale</th><th>Source</th><th>Campaign</th><th>Cars</th><th>Updated</th></tr>
@@ -1289,7 +1620,7 @@ function renderAccountTable(items) {
 }
 
 function renderAccountList(items) {
-  if (!items.length) return '<div class="empty">ไม่มีข้อมูล</div>'
+  if (!items.length) return emptyState('ไม่พบข้อมูล', 'ยังไม่มีรายการที่ตรงกับเงื่อนไขนี้')
   return `
     <div class="list-view">
       ${items.map((a) => `
@@ -1327,7 +1658,7 @@ function renderAccountBoard(items, key) {
               <div style="margin-top:8px">${badge(a.lifecycle_status || '-')}</div>
               <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${a.id}">Open</button></div>
             </div>
-          `).join('') || '<div class="empty">ว่าง</div>'}
+          `).join('') || '<div class="empty compact-empty">ว่าง</div>'}
         </div>
       `).join('')}
     </div>
@@ -1361,15 +1692,6 @@ function renderAccountTimeline(items) {
   return renderTimelineEvents(rows)
 }
 
-function renderTaskCollection(items, key) {
-  const mode = state.viewModes[key] || 'board'
-  if (mode === 'board') return renderTaskBoard(items)
-  if (mode === 'calendar') return renderCalendarEvents(items.map((task) => ({ date: datePart(task.due_at), title: `Task: ${task.title}`, accountId: task.account_id })))
-  if (mode === 'timeline') return renderTimelineEvents(items.map((task) => ({ title: task.title, start: datePart(task.created_at), end: datePart(task.due_at), accountId: task.account_id })))
-  if (mode === 'list') return renderTaskList(items, false)
-  return renderTaskTable(items)
-}
-
 function renderTaskBoard(items) {
   const groups = groupRows(items, 'status')
   const keys = ['open', 'in_progress', 'blocked', 'done', 'cancelled']
@@ -1383,9 +1705,9 @@ function renderTaskBoard(items) {
               <strong>${escapeHTML(task.title || '-')}</strong>
               <div class="list-meta">${escapeHTML(accountTitle(findAccount(task.account_id)))}<br>Due: ${formatDateTime(task.due_at)}</div>
               <div style="margin-top:8px">${badge(task.priority || 'medium')}</div>
-              <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${task.account_id}">Open</button></div>
+              <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-action="mark-task-done" data-id="${task.id}">Done</button><button class="btn small" type="button" data-nav-account="${task.account_id}">Open</button></div>
             </div>
-          `).join('') || '<div class="empty">ว่าง</div>'}
+          `).join('') || '<div class="empty compact-empty">ว่าง</div>'}
         </div>
       `).join('')}
     </div>
@@ -1393,7 +1715,7 @@ function renderTaskBoard(items) {
 }
 
 function renderTaskTable(items) {
-  if (!items.length) return '<div class="empty">ไม่มี task</div>'
+  if (!items.length) return emptyState('ไม่มี task', 'ยังไม่มีงานที่ตรงกับเงื่อนไขนี้')
   const rows = items.map((task) => `
     <tr>
       <td>${escapeHTML(task.title || '-')}</td>
@@ -1405,26 +1727,17 @@ function renderTaskTable(items) {
       <td><button class="btn small" type="button" data-nav-account="${task.account_id}">Open</button></td>
     </tr>
   `).join('')
-  return `<div class="table-wrap"><table><thead><tr><th>Task</th><th>Account</th><th>Status</th><th>Priority</th><th>Owner</th><th>Due</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-}
-
-function renderTrainingCollection(items, key) {
-  const mode = state.viewModes[key] || 'calendar'
-  if (mode === 'calendar') return renderCalendarEvents(items.map((t) => ({ date: t.training_date, title: `Training #${t.session_no}: ${accountTitle(findAccount(t.account_id))}`, accountId: t.account_id })))
-  if (mode === 'timeline') return renderTimelineEvents(items.map((t) => ({ title: `Training #${t.session_no}: ${accountTitle(findAccount(t.account_id))}`, start: t.training_date, end: t.training_date, accountId: t.account_id })))
-  if (mode === 'board') return renderTrainingBoard(items)
-  if (mode === 'list') return renderTrainingList(items)
-  return renderTrainingTable(items)
+  return `<div class="table-wrap responsive-table"><table><thead><tr><th>Task</th><th>Account</th><th>Status</th><th>Priority</th><th>Owner</th><th>Due</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
 }
 
 function renderTrainingBoard(items) {
   const groups = groupRows(items, 'status')
   const keys = ['planned', 'done', 'cancelled']
-  return `<div class="board">${keys.map((key) => `<div class="board-column"><div class="board-title"><span>${key}</span><span>${groups[key]?.length || 0}</span></div>${(groups[key] || []).map(renderTrainingCardItem).join('') || '<div class="empty">ว่าง</div>'}</div>`).join('')}</div>`
+  return `<div class="board">${keys.map((key) => `<div class="board-column"><div class="board-title"><span>${key}</span><span>${groups[key]?.length || 0}</span></div>${(groups[key] || []).map(renderTrainingCardItem).join('') || '<div class="empty compact-empty">ว่าง</div>'}</div>`).join('')}</div>`
 }
 
 function renderTrainingList(items) {
-  if (!items.length) return '<div class="empty">ไม่มี training</div>'
+  if (!items.length) return emptyState('ไม่มี Training', 'ยังไม่มี session ที่ตรงกับเงื่อนไขนี้')
   return `<div class="list-view">${items.map(renderTrainingCardItem).join('')}</div>`
 }
 
@@ -1440,7 +1753,7 @@ function renderTrainingCardItem(t) {
 }
 
 function renderTrainingTable(items) {
-  if (!items.length) return '<div class="empty">ไม่มี training</div>'
+  if (!items.length) return emptyState('ไม่มี Training', 'ยังไม่มี session ที่ตรงกับเงื่อนไขนี้')
   const rows = items.map((t) => `
     <tr>
       <td>#${t.session_no || '-'}</td>
@@ -1452,12 +1765,12 @@ function renderTrainingTable(items) {
       <td><button class="btn small" type="button" data-nav-account="${t.account_id}">Open</button></td>
     </tr>
   `).join('')
-  return `<div class="table-wrap"><table><thead><tr><th>ครั้งที่</th><th>Account</th><th>Phase</th><th>Date</th><th>Trainer</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+  return `<div class="table-wrap responsive-table"><table><thead><tr><th>ครั้งที่</th><th>Account</th><th>Phase</th><th>Date</th><th>Trainer</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
 }
 
 function renderCalendarEvents(events) {
   const validEvents = events.filter((event) => event.date).sort((a, b) => String(a.date).localeCompare(String(b.date)))
-  if (!validEvents.length) return '<div class="empty">ไม่มี event ใน calendar</div>'
+  if (!validEvents.length) return emptyState('ไม่มี event ใน calendar', 'ลองเปลี่ยน filter หรือเพิ่มวันนัดหมาย/กำหนดงาน')
   const groups = groupRows(validEvents, 'date')
   return `
     <div class="calendar">
@@ -1475,7 +1788,7 @@ function renderCalendarEvents(events) {
 
 function renderTimelineEvents(rows) {
   const validRows = rows.filter((row) => row.start || row.end)
-  if (!validRows.length) return '<div class="empty">ไม่มีข้อมูล timeline</div>'
+  if (!validRows.length) return emptyState('ไม่มีข้อมูล timeline', 'Timeline จะแสดงเมื่อมี start/end date หรือ due date')
   return `
     <div class="timeline">
       ${validRows.map((row) => `
@@ -1512,6 +1825,21 @@ async function onClick(event) {
     return
   }
 
+  const tabBtn = event.target.closest('[data-account-tab]')
+  if (tabBtn) {
+    state.accountTabs[tabBtn.dataset.accountId] = tabBtn.dataset.accountTab
+    render()
+    return
+  }
+
+  const pageBtn = event.target.closest('[data-page-key]')
+  if (pageBtn) {
+    const filter = getFilter(pageBtn.dataset.pageKey)
+    filter.page = Number(filter.page || 1) + Number(pageBtn.dataset.pageDelta || 0)
+    render()
+    return
+  }
+
   const action = event.target.closest('[data-action]')
   if (!action) return
 
@@ -1524,6 +1852,11 @@ async function onClick(event) {
   if (type === 'mark-task-done') return markTaskDone(action.dataset.id)
   if (type === 'save-profile') return saveProfile(action.dataset.id)
   if (type === 'toggle-master') return toggleMaster(action.dataset.table, action.dataset.id, action.dataset.active === 'true')
+  if (type === 'clear-filters') {
+    const key = action.dataset.filterKey
+    state.filters[key] = { q: '', sort: key === 'tasks' ? 'due_asc' : key === 'training' ? 'date_asc' : 'updated_desc', page: 1, pageSize: 25 }
+    render()
+  }
 }
 
 async function onSubmit(event) {
@@ -1534,6 +1867,7 @@ async function onSubmit(event) {
 
   const type = form.dataset.form
   try {
+    clearFormErrors(form)
     setFormBusy(form, true)
 
     if (type === 'login') await login(form)
@@ -1552,6 +1886,7 @@ async function onSubmit(event) {
     if (type === 'mark-lost') await markLost(form)
     if (type === 'create-master') await createMaster(form)
   } catch (error) {
+    showFormError(form, error)
     toast(error.message || String(error), 'error')
   } finally {
     setFormBusy(form, false)
@@ -1563,10 +1898,31 @@ function onChange(event) {
   if (target.matches('[data-profile-field]')) {
     target.dataset.dirty = 'true'
   }
+
+  if (target.matches('[data-filter-control]') && target.type !== 'search') {
+    const filter = getFilter(target.dataset.filterKey)
+    const value = target.value
+    filter[target.dataset.filterName] = target.dataset.filterName === 'pageSize' ? Number(value) : value
+    filter.page = 1
+    render()
+  }
+}
+
+function onInput(event) {
+  const target = event.target
+  if (!target.matches('[data-filter-control][type="search"]')) return
+  const filter = getFilter(target.dataset.filterKey)
+  filter[target.dataset.filterName] = target.value
+  filter.page = 1
+  window.clearTimeout(filterTimer)
+  filterTimer = window.setTimeout(() => render(), 300)
 }
 
 async function login(form) {
   const values = formValues(form)
+  if (!nullIfBlank(values.email) || !nullIfBlank(values.password)) {
+    throw createValidationError('กรุณากรอกอีเมลและรหัสผ่าน', ['email', 'password'])
+  }
   const { error } = await state.client.auth.signInWithPassword({
     email: values.email,
     password: values.password
@@ -1637,7 +1993,7 @@ function ensureLeadMinimum(values) {
   const hasMinimum = [values.company_name, values.contact_name, values.phone, values.email, values.initial_note]
     .some((value) => String(value || '').trim())
   if (!hasMinimum) {
-    throw new Error('ต้องกรอกข้อมูลขั้นต่ำอย่างน้อย 1 อย่าง เช่น ผู้ติดต่อ เบอร์ อีเมล รายละเอียด หรือชื่อบริษัท')
+    throw createValidationError('ต้องกรอกข้อมูลขั้นต่ำอย่างน้อย 1 อย่าง เช่น ผู้ติดต่อ เบอร์ อีเมล รายละเอียด หรือชื่อบริษัท', ['company_name', 'contact_name', 'phone', 'email', 'initial_note'])
   }
 }
 
@@ -1718,6 +2074,9 @@ async function addActivity(form) {
 
 async function requestDemo(form) {
   const values = formValues(form)
+  if (values.start_date && values.end_date && values.end_date < values.start_date) {
+    throw createValidationError('วันที่สิ้นสุด Demo ต้องไม่น้อยกว่าวันที่เริ่ม', ['start_date', 'end_date'])
+  }
   const { error } = await state.client.rpc('create_demo_request', {
     p_account_id: form.dataset.accountId,
     p_start_date: values.start_date,
@@ -1874,6 +2233,7 @@ async function addTask(form) {
 }
 
 async function markLost(form) {
+  if (!window.confirm('ยืนยันปิด Account นี้เป็น Lost?')) return
   const values = formValues(form)
   const { error } = await state.client.rpc('change_account_stage', {
     p_account_id: form.dataset.accountId,
@@ -1922,6 +2282,7 @@ async function convertCustomer(accountId) {
 }
 
 async function markTaskDone(taskId) {
+  if (!window.confirm('ยืนยันปิด Task นี้เป็น Done?')) return
   const { error } = await state.client.from(TABLES.tasks).update({
     status: 'done',
     completed_at: new Date().toISOString()
@@ -2038,49 +2399,69 @@ function roleLabel(role) {
   return labels[role] || role || '-'
 }
 
+function fieldId(name) {
+  fieldSeq += 1
+  return `${name}-${fieldSeq}`
+}
+
 function inputField(name, label, type, required, value = '', disabled = '') {
+  const id = fieldId(name)
   return `
-    <div class="field">
-      <label>${escapeHTML(label)}${required ? ' *' : ''}</label>
-      <input name="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${escapeAttr(value)}" ${required ? 'required' : ''} ${disabled}>
+    <div class="field" data-field="${escapeAttr(name)}">
+      <label for="${escapeAttr(id)}">${escapeHTML(label)}${required ? ' *' : ''}</label>
+      <input id="${escapeAttr(id)}" name="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${escapeAttr(value)}" ${required ? 'required' : ''} ${disabled} aria-describedby="${escapeAttr(id)}-help">
+      <div class="field-error" data-field-error="${escapeAttr(name)}"></div>
     </div>
   `
 }
 
 function selectField(name, label, rows, valueField, labelField, required, selected = '', disabled = '') {
+  const id = fieldId(name)
   const options = [`<option value="">- เลือก -</option>`].concat((rows || []).map((row) => {
     const labelValue = row[labelField] || row.name || row.email || row.id
     return `<option value="${escapeAttr(row[valueField])}" ${String(selected) === String(row[valueField]) ? 'selected' : ''}>${escapeHTML(labelValue)}</option>`
   })).join('')
   return `
-    <div class="field">
-      <label>${escapeHTML(label)}${required ? ' *' : ''}</label>
-      <select name="${escapeAttr(name)}" ${required ? 'required' : ''} ${disabled}>${options}</select>
+    <div class="field" data-field="${escapeAttr(name)}">
+      <label for="${escapeAttr(id)}">${escapeHTML(label)}${required ? ' *' : ''}</label>
+      <select id="${escapeAttr(id)}" name="${escapeAttr(name)}" ${required ? 'required' : ''} ${disabled}>${options}</select>
+      <div class="field-error" data-field-error="${escapeAttr(name)}"></div>
     </div>
   `
 }
 
 function selectStaticField(name, label, values, required, selected = '', disabled = '') {
+  const id = fieldId(name)
   const options = [`<option value="">- เลือก -</option>`].concat(values.map((value) => `<option value="${escapeAttr(value)}" ${selected === value ? 'selected' : ''}>${escapeHTML(value)}</option>`)).join('')
   return `
-    <div class="field">
-      <label>${escapeHTML(label)}${required ? ' *' : ''}</label>
-      <select name="${escapeAttr(name)}" ${required ? 'required' : ''} ${disabled}>${options}</select>
+    <div class="field" data-field="${escapeAttr(name)}">
+      <label for="${escapeAttr(id)}">${escapeHTML(label)}${required ? ' *' : ''}</label>
+      <select id="${escapeAttr(id)}" name="${escapeAttr(name)}" ${required ? 'required' : ''} ${disabled}>${options}</select>
+      <div class="field-error" data-field-error="${escapeAttr(name)}"></div>
     </div>
   `
 }
 
 function multiSelectField(name, label, rows, valueField, labelField, selected = [], disabled = '') {
   const selectedSet = new Set(Array.isArray(selected) ? selected.map(String) : [])
-  const options = (rows || []).map((row) => {
+  const safeName = escapeAttr(name)
+  const controls = (rows || []).map((row) => {
+    const value = String(row[valueField])
     const labelValue = row[labelField] || row.name || row.email || row.id
-    return `<option value="${escapeAttr(row[valueField])}" ${selectedSet.has(String(row[valueField])) ? 'selected' : ''}>${escapeHTML(labelValue)}</option>`
+    const id = fieldId(name)
+    return `
+      <label class="check-chip" for="${escapeAttr(id)}">
+        <input id="${escapeAttr(id)}" type="checkbox" name="${safeName}" value="${escapeAttr(value)}" data-multi-name="${safeName}" ${selectedSet.has(value) ? 'checked' : ''} ${disabled}>
+        <span>${escapeHTML(labelValue)}</span>
+      </label>
+    `
   }).join('')
   return `
-    <div class="field">
-      <label>${escapeHTML(label)}</label>
-      <select name="${escapeAttr(name)}" multiple ${disabled}>${options}</select>
-      <div class="help">กด Ctrl/Command เพื่อเลือกมากกว่า 1 รายการ</div>
+    <div class="field full" data-field="${safeName}">
+      <div class="field-label">${escapeHTML(label)}</div>
+      <div class="check-grid">${controls || '<span class="muted">ยังไม่มีรายการให้เลือก</span>'}</div>
+      <div class="help">เลือกได้มากกว่า 1 รายการ</div>
+      <div class="field-error" data-field-error="${safeName}"></div>
     </div>
   `
 }
@@ -2092,7 +2473,7 @@ function badge(text) {
 }
 
 function simpleRowsTable(headers, rows) {
-  if (!rows.length) return '<div class="empty">ไม่มีข้อมูล</div>'
+  if (!rows.length) return emptyState('ไม่มีข้อมูล', 'ยังไม่มีรายการในส่วนนี้')
   return `
     <div class="table-wrap">
       <table>
@@ -2141,6 +2522,11 @@ function formValues(form) {
     values[select.name] = Array.from(select.selectedOptions).map((option) => option.value).filter(Boolean)
   })
 
+  const multiNames = Array.from(new Set(Array.from(form.querySelectorAll('[data-multi-name]')).map((input) => input.name)))
+  multiNames.forEach((name) => {
+    values[name] = Array.from(form.querySelectorAll(`[name="${cssEscape(name)}"][data-multi-name]:checked`)).map((input) => input.value).filter(Boolean)
+  })
+
   return values
 }
 
@@ -2166,6 +2552,70 @@ function setFormBusy(form, busy) {
     form.removeAttribute('aria-busy')
   }
 }
+
+function cssEscape(value) {
+  if (window.CSS && typeof window.CSS.escape === 'function') {
+    return window.CSS.escape(String(value))
+  }
+  return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&')
+}
+
+
+function createValidationError(message, fieldNames = []) {
+  const error = new Error(message)
+  error.fieldNames = fieldNames
+  return error
+}
+
+function clearFormErrors(form) {
+  form.querySelectorAll('.form-error').forEach((el) => el.remove())
+  form.querySelectorAll('.field-error').forEach((el) => { el.textContent = '' })
+  form.querySelectorAll('[aria-invalid="true"]').forEach((el) => el.removeAttribute('aria-invalid'))
+}
+
+function showFormError(form, error) {
+  clearFormErrors(form)
+  const message = error.message || String(error)
+  const summary = document.createElement('div')
+  summary.className = 'form-error'
+  summary.setAttribute('role', 'alert')
+  summary.textContent = message
+  form.prepend(summary)
+
+  const fieldNames = Array.isArray(error.fieldNames) ? error.fieldNames : []
+  fieldNames.forEach((name) => {
+    const input = form.querySelector(`[name="${cssEscape(name)}"]`)
+    const holder = form.querySelector(`[data-field-error="${cssEscape(name)}"]`)
+    if (input) input.setAttribute('aria-invalid', 'true')
+    if (holder) holder.textContent = message
+  })
+
+  const firstInvalid = fieldNames.length ? form.querySelector(`[name="${CSS.escape(fieldNames[0])}"]`) : null
+  if (firstInvalid && typeof firstInvalid.focus === 'function') {
+    firstInvalid.focus()
+  } else {
+    summary.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+function emptyState(title, description, actionHTML = '') {
+  return `
+    <div class="empty-state">
+      <div class="empty-icon">∅</div>
+      <h3>${escapeHTML(title)}</h3>
+      <p>${escapeHTML(description || '')}</p>
+      ${actionHTML}
+    </div>
+  `
+}
+
+function daysFromToday(dateValue) {
+  if (!dateValue) return 999
+  const target = new Date(dateValue)
+  const today = startOfToday()
+  return Math.ceil((target - today) / 86400000)
+}
+
 
 function nullIfBlank(value) {
   const text = String(value ?? '').trim()
