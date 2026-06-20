@@ -1,12 +1,12 @@
 
 /*
   ระบบ CRM ภายใน
-  Version: 1.4.1
+  Version: 1.4.2
   Stack: GitHub Pages + Supabase
   Files: README.md, index.html, script.js, style.css
 */
 
-const APP_VERSION = '1.4.1'
+const APP_VERSION = '1.4.2'
 
 const CONFIG = {
   supabaseUrl: 'https://eplqmkiftafkvqdgvsfp.supabase.co',
@@ -243,7 +243,7 @@ function isActiveUser() {
   return Boolean(state.profile && state.profile.is_active && state.profile.role !== ROLES.PENDING)
 }
 
-function hasPermissionิ์(roles) {
+function hasRole(roles) {
   if (!Array.isArray(roles)) return false
   return roles.includes(state.profile?.role)
 }
@@ -343,7 +343,7 @@ function render() {
     return
   }
 
-  if (!hasPermissionิ์(nav.roles)) {
+  if (!hasRole(nav.roles)) {
     app.innerHTML = renderAppLayout('ไม่มีสิทธิ์เข้าถึง', renderUnauthorized(), '')
     return
   }
@@ -370,7 +370,7 @@ function renderAppLayout(title, content, activeKey) {
 
 function renderSidebar(activeKey) {
   const links = ROUTES
-    .filter((item) => hasPermissionิ์(item.roles))
+    .filter((item) => hasRole(item.roles))
     .map((item) => `
       <button class="nav-link ${activeKey === item.key ? 'active' : ''}" data-nav="${item.key}" type="button" title="${escapeAttr(item.label)}" aria-label="${escapeAttr(item.label)}">
         <span class="nav-icon" aria-hidden="true">${item.icon}</span><span class="nav-label">${escapeHTML(item.label)}</span>
@@ -615,10 +615,10 @@ function renderMyWork() {
     <div class="card" style="margin-top:16px">
       <h3>Demo ใกล้หมดอายุ</h3>
       ${simpleRowsTable(['บัญชี', 'สถานะ', 'Start', 'End', ''], demoEndingSoon.map((demo) => [
-        accountTitle(findAccountี(demo.account_id)),
+        accountTitle(findAccount(demo.account_id)),
         badge(demo.demo_status || '-'),
-        formatDateี่(demo.start_date),
-        formatDateี่(demo.end_date),
+        formatDate(demo.start_date),
+        formatDate(demo.end_date),
         `<button class="btn small" type="button" data-nav-account="${demo.account_id}">เปิด</button>`
       ]))}
     </div>
@@ -716,8 +716,8 @@ function renderLeads() {
         <p>Default แสดง Lead ที่ยัง active แต่ข้อมูลที่เปลี่ยนเป็น Demo / Customer / Lost ยังดูต่อได้จาก tab อื่น</p>
       </div>
       <div class="actions">
-        ${hasPermissionิ์([ROLES.ADMIN, ROLES.MKT]) ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ สร้าง MKT Lead</button>` : ''}
-        ${hasPermissionิ์([ROLES.ADMIN, ROLES.SALE]) ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ Sale สร้าง Lead</button>` : ''}
+        ${hasRole([ROLES.ADMIN, ROLES.MKT]) ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ สร้าง MKT Lead</button>` : ''}
+        ${hasRole([ROLES.ADMIN, ROLES.SALE]) ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ Sale สร้าง Lead</button>` : ''}
       </div>
     </div>
 
@@ -744,8 +744,8 @@ function renderLeads() {
 
 
 function renderLeadCreatePanel() {
-  const canCreateMkt = hasPermissionิ์([ROLES.ADMIN, ROLES.MKT])
-  const canCreateSale = hasPermissionิ์([ROLES.ADMIN, ROLES.SALE])
+  const canCreateMkt = hasRole([ROLES.ADMIN, ROLES.MKT])
+  const canCreateSale = hasRole([ROLES.ADMIN, ROLES.SALE])
   if (!canCreateMkt && !canCreateSale) return ''
 
   return `
@@ -1212,8 +1212,8 @@ function renderDemoCard(account) {
   const demoRows = demos.map((demo) => `
     <tr>
       <td>${badge(demo.demo_status || '-')}</td>
-      <td>${formatDateี่(demo.start_date)}</td>
-      <td>${formatDateี่(demo.end_date)}</td>
+      <td>${formatDate(demo.start_date)}</td>
+      <td>${formatDate(demo.end_date)}</td>
       <td>${escapeHTML(demo.demo_result || '-')}</td>
       <td><button class="btn small" type="button" data-open-modal="edit-demo" data-demo-id="${demo.id}">Edit</button></td>
     </tr>
@@ -1244,7 +1244,7 @@ function renderDemoDetail(demo) {
   return `
     <div class="card compact subcard">
       <div class="section-head">
-        <h3>Demo Detail: ${formatDateี่(demo.start_date)} - ${formatDateี่(demo.end_date)}</h3>
+        <h3>Demo Detail: ${formatDate(demo.start_date)} - ${formatDate(demo.end_date)}</h3>
         <div class="actions">
           ${!isReadOnly() ? `<button class="btn small" type="button" data-open-modal="edit-demo" data-demo-id="${demo.id}">แก้ไขเดโม</button>` : ''}
           ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-demo-user" data-demo-id="${demo.id}" data-account-id="${demo.account_id}">+ Demo User</button>` : ''}
@@ -1288,7 +1288,7 @@ function renderTrainingCard(account) {
   const rows = trainings.map((t) => [
     `#${t.session_no || '-'}`,
     t.training_phase || '-',
-    formatDateี่(t.training_date),
+    formatDate(t.training_date),
     displayUser(t.trainer_id),
     t.status || '-',
     `<button class="btn small" type="button" data-nav="training">View</button>`
@@ -1373,8 +1373,8 @@ function renderCustomerCard(account) {
         <div class="meta-label">ผู้รับผิดชอบ</div><div>${escapeHTML(displayUser(customer.owner_id))}</div>
         <div class="meta-label">จำนวนรถ</div><div>${escapeHTML(String(customer.cars || account.cars_estimate || '-'))}</div>
         <div class="meta-label">การใช้งาน</div><div>${escapeHTML(customer.functions || '-')}</div>
-        <div class="meta-label">Start</div><div>${formatDateี่(customer.start_date)}</div>
-        <div class="meta-label">รอบบิล</div><div>${formatDateี่(customer.billing_date)}</div>
+        <div class="meta-label">Start</div><div>${formatDate(customer.start_date)}</div>
+        <div class="meta-label">รอบบิล</div><div>${formatDate(customer.billing_date)}</div>
         <div class="meta-label">ระดับการใช้งาน</div><div>${badge(customer.engagement_level || '-')}</div>
         <div class="meta-label">สถานะ</div><div>${badge(customer.customer_status || '-')}</div>
         <div class="meta-label">หมายเหตุ</div><div>${escapeHTML(customer.note || '-')}</div>
@@ -1422,7 +1422,7 @@ function renderTaskList(tasks, compact) {
         <span>${badge(task.status || 'open')} ${badge(task.priority || 'medium')}</span>
       </div>
       <div class="list-meta">
-        บัญชี: ${escapeHTML(accountTitle(findAccountี(task.account_id)))}<br>
+        บัญชี: ${escapeHTML(accountTitle(findAccount(task.account_id)))}<br>
         ผู้รับผิดชอบ: ${escapeHTML(displayUser(task.assigned_to))} · กำหนด: ${formatDateTime(task.due_at)}
       </div>
       ${compact ? '' : `<div class="actions"><button class="btn small" type="button" data-action="mark-task-done" data-id="${task.id}">Done</button><button class="btn small" type="button" data-nav-account="${task.account_id}">เปิด บัญชี</button></div>`}
@@ -1543,8 +1543,8 @@ function renderTrainingCollection(items, key) {
   const prepared = prepareCollection(items, key, 'training')
   const mode = state.viewModes[key] || 'calendar'
   let body = ''
-  if (mode === 'calendar') body = renderCalendarEvents(prepared.items.map((t) => ({ date: t.training_date, title: `Training #${t.session_no}: ${accountTitle(findAccountี(t.account_id))}`, accountId: t.account_id })))
-  else if (mode === 'timeline') body = renderTimelineEvents(prepared.items.map((t) => ({ title: `Training #${t.session_no}: ${accountTitle(findAccountี(t.account_id))}`, start: t.training_date, end: t.training_date, accountId: t.account_id })))
+  if (mode === 'calendar') body = renderCalendarEvents(prepared.items.map((t) => ({ date: t.training_date, title: `Training #${t.session_no}: ${accountTitle(findAccount(t.account_id))}`, accountId: t.account_id })))
+  else if (mode === 'timeline') body = renderTimelineEvents(prepared.items.map((t) => ({ title: `Training #${t.session_no}: ${accountTitle(findAccount(t.account_id))}`, start: t.training_date, end: t.training_date, accountId: t.account_id })))
   else if (mode === 'board') body = renderTrainingBoard(prepared.items)
   else if (mode === 'list') body = renderTrainingList(prepared.items)
   else body = renderTrainingTable(prepared.items)
@@ -1669,7 +1669,7 @@ function filterCollection(items, filter, type) {
 }
 
 function matchesSearch(item, q, type) {
-  const account = type === 'tasks' || type === 'training' ? findAccountี(item.account_id) : item
+  const account = type === 'tasks' || type === 'training' ? findAccount(item.account_id) : item
   const contacts = account?.id ? state.cache.contacts.filter((c) => c.account_id === account.id) : []
   const haystack = [
     account?.running_no,
@@ -1833,7 +1833,7 @@ function renderTaskBoard(items) {
           ${(groups[group] || []).map((task) => `
             <div class="board-card">
               <strong>${escapeHTML(task.title || '-')}</strong>
-              <div class="list-meta">${escapeHTML(accountTitle(findAccountี(task.account_id)))}<br>กำหนด: ${formatDateTime(task.due_at)}</div>
+              <div class="list-meta">${escapeHTML(accountTitle(findAccount(task.account_id)))}<br>กำหนด: ${formatDateTime(task.due_at)}</div>
               <div style="margin-top:8px">${badge(task.priority || 'medium')}</div>
               <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-action="mark-task-done" data-id="${task.id}">Done</button><button class="btn small" type="button" data-nav-account="${task.account_id}">เปิด</button></div>
             </div>
@@ -1849,7 +1849,7 @@ function renderTaskTable(items) {
   const rows = items.map((task) => `
     <tr>
       <td>${escapeHTML(task.title || '-')}</td>
-      <td>${escapeHTML(accountTitle(findAccountี(task.account_id)))}</td>
+      <td>${escapeHTML(accountTitle(findAccount(task.account_id)))}</td>
       <td>${badge(task.status || 'open')}</td>
       <td>${badge(task.priority || 'medium')}</td>
       <td>${escapeHTML(displayUser(task.assigned_to))}</td>
@@ -1874,8 +1874,8 @@ function renderTrainingList(items) {
 function renderTrainingCardItem(t) {
   return `
     <div class="board-card">
-      <strong>#${t.session_no || '-'} ${escapeHTML(accountTitle(findAccountี(t.account_id)))}</strong>
-      <div class="list-meta">${escapeHTML(t.training_phase || '-')} · ${formatDateี่(t.training_date)} · ผู้สอน: ${escapeHTML(displayUser(t.trainer_id))}</div>
+      <strong>#${t.session_no || '-'} ${escapeHTML(accountTitle(findAccount(t.account_id)))}</strong>
+      <div class="list-meta">${escapeHTML(t.training_phase || '-')} · ${formatDate(t.training_date)} · ผู้สอน: ${escapeHTML(displayUser(t.trainer_id))}</div>
       <div style="margin-top:8px">${badge(t.status || '-')}</div>
       <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${t.account_id}">เปิด</button></div>
     </div>
@@ -1887,9 +1887,9 @@ function renderTrainingTable(items) {
   const rows = items.map((t) => `
     <tr>
       <td>#${t.session_no || '-'}</td>
-      <td>${escapeHTML(accountTitle(findAccountี(t.account_id)))}</td>
+      <td>${escapeHTML(accountTitle(findAccount(t.account_id)))}</td>
       <td>${escapeHTML(t.training_phase || '-')}</td>
-      <td>${formatDateี่(t.training_date)}</td>
+      <td>${formatDate(t.training_date)}</td>
       <td>${escapeHTML(displayUser(t.trainer_id))}</td>
       <td>${badge(t.status || '-')}</td>
       <td><button class="btn small" type="button" data-nav-account="${t.account_id}">เปิด</button></td>
@@ -1906,7 +1906,7 @@ function renderCalendarEvents(events) {
     <div class="calendar">
       ${Object.keys(groups).sort().map((date) => `
         <div class="calendar-day">
-          <div class="calendar-date">${formatDateี่(date)}</div>
+          <div class="calendar-date">${formatDate(date)}</div>
           <div class="list-view">
             ${groups[date].map((event) => `<div class="list-item"><div class="list-title">${escapeHTML(event.title || '-')}</div><div class="actions"><button class="btn small" type="button" data-nav-account="${event.accountId}">เปิด</button></div></div>`).join('')}
           </div>
@@ -1925,7 +1925,7 @@ function renderTimelineEvents(rows) {
         <div class="timeline-row">
           <div class="list-title">
             <span>${escapeHTML(row.title || '-')}</span>
-            <span class="muted">${formatDateี่(row.start)} → ${formatDateี่(row.end)}</span>
+            <span class="muted">${formatDate(row.start)} → ${formatDate(row.end)}</span>
           </div>
           <div class="timeline-track"><div class="timeline-bar" style="width:${timelineWidth(row.start, row.end)}%"></div></div>
           <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${row.accountId}">เปิด</button></div>
@@ -2079,7 +2079,7 @@ function modalTitle(modal) {
 }
 
 function modalSubtitle(modal) {
-  const account = modal.accountId ? findAccountี(modal.accountId) : null
+  const account = modal.accountId ? findAccount(modal.accountId) : null
   if (account) return accountTitle(account)
   if (modal.type === 'create-mkt-lead') return 'ระบบจะออก เลข MKT และ assign Sale แบบ round-robin'
   if (modal.type === 'create-sales-lead') return 'Lead นี้จะไม่มี เลข MKT และ owner คือ Sale ที่สร้าง'
@@ -2087,7 +2087,7 @@ function modalSubtitle(modal) {
 }
 
 function modalContent(modal) {
-  const account = modal.accountId ? findAccountี(modal.accountId) : null
+  const account = modal.accountId ? findAccount(modal.accountId) : null
   if (modal.type === 'create-mkt-lead') return renderMktLeadForm()
   if (modal.type === 'create-sales-lead') return renderSaleLeadForm()
   if (modal.type === 'add-contact' && account) return renderAddContactForm(account)
@@ -2103,7 +2103,7 @@ function modalContent(modal) {
   if (modal.type === 'add-training' && account) return renderTrainingForm(account)
   if (modal.type === 'add-training-participant') {
     const training = state.cache.trainings.find((item) => item.id === modal.trainingId)
-    return training ? renderAddTrainingParticipantForm(training, account || findAccountี(training.account_id)) : emptyState('ไม่พบ Training', 'ไม่สามารถเพิ่มผู้เข้าร่วมได้')
+    return training ? renderAddTrainingParticipantForm(training, account || findAccount(training.account_id)) : emptyState('ไม่พบ Training', 'ไม่สามารถเพิ่มผู้เข้าร่วมได้')
   }
   if (modal.type === 'customer-profile' && account) return renderCustomerProfileForm(account)
   if (modal.type === 'add-task' && account) return renderTaskForm(account)
@@ -2676,7 +2676,7 @@ async function convertCustomer(accountId) {
 
   const existing = state.cache.customers.find((c) => c.account_id === accountId)
   if (!existing) {
-    const account = findAccountี(accountId)
+    const account = findAccount(accountId)
     const { error: insertError } = await state.client.from(TABLES.customers).insert({
       account_id: accountId,
       owner_id: state.profile.role === ROLES.CS ? state.user.id : null,
@@ -2753,7 +2753,7 @@ function showLostForm(accountId) {
   if (form) form.style.display = form.style.display === 'none' ? 'grid' : 'none'
 }
 
-function findAccountี(accountId) {
+function findAccount(accountId) {
   return state.cache.accounts.find((a) => a.id === accountId) || null
 }
 
@@ -3096,7 +3096,7 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null
 }
 
-function formatDateี่(value) {
+function formatDate(value) {
   if (!value) return '-'
   try {
     return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium' }).format(new Date(value))

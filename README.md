@@ -1,11 +1,19 @@
 # Internal CRM Ops
 
-Current version: `1.4.1`  
+Current version: `1.4.2`  
 Release date: `2026-06-20`  
 Stack: GitHub Pages + Supabase + plain HTML/CSS/JS  
 Repository files allowed: `README.md`, `index.html`, `script.js`, `style.css`
 
 ## Changelog
+
+### v1.4.2 — Hotfix Render Permission Helper
+
+- แก้ runtime error `hasRole is not defined` หลัง login สำเร็จ
+- คืนชื่อ internal helper ที่ถูกแปลผิดกลับเป็นภาษาอังกฤษ: `hasRole`, `findAccount`, `formatDate`
+- คงข้อความ UI ภาษาไทยตาม requirement เดิม
+- ไม่มี SQL migration ใหม่
+
 
 ### v1.4.1 — Hotfix Login Auth Method
 
@@ -164,18 +172,26 @@ const CONFIG = {
 
 ห้ามใส่ `service_role key` ใน frontend
 
-## SQL / Migration
+## SQL Migration v1.4.1
 
-v1.4.1 ไม่มี SQL migration ใหม่
+ถ้าเคยรัน v1.3.0 แล้ว ให้รันไฟล์ `internal-crm-ops-v1.4.1-migration.sql` ก่อน deploy frontend
 
-ถ้าระบบของคุณยังไม่ได้อัปเดตจาก v1.3.0 เป็น v1.4.0 ให้รัน migration v1.4.0 ก่อน เพราะ migration นั้นเป็นตัวที่ลบ `legacy_account_id` และ recreate RPC ที่เกี่ยวข้อง
+สิ่งที่ migration ทำ:
+
+```text
+- drop accounts.legacy_account_id
+- drop idx_accounts_legacy_account_id
+- recreate create_mkt_lead โดยไม่มี p_legacy_account_id
+- recreate create_sales_lead โดยไม่มี p_legacy_account_id
+- keep lead_channels และ business_types
+```
 
 ## Deploy
 
 ```bash
 git status
 git add README.md index.html script.js style.css
-git commit -m "hotfix: fix login auth method v1.4.1"
+git commit -m "release: thai ui hover sidebar master delete v1.4.1"
 git push
 ```
 
@@ -189,6 +205,7 @@ Mac: Cmd + Shift + R
 ## Test Checklist
 
 - Login ด้วย Admin
+- รัน SQL migration v1.4.1 สำเร็จ
 - เปิด Sidebar แล้วเห็น icon-only
 - Hover sidebar แล้วเมนูขยาย
 - ไม่มีปุ่มย่อ/ขยาย sidebar
@@ -213,4 +230,4 @@ git push
 
 Database:
 
-v1.4.1 ไม่มี SQL ใหม่ ถ้าต้อง rollback DB ให้ใช้ rollback note ของ v1.4.0 เฉพาะกรณีที่เพิ่งรัน migration ลบ `legacy_account_id`
+v1.4.1 ลบ column `legacy_account_id` ถ้าต้อง rollback DB ต้อง restore จาก Supabase backup เท่านั้น
