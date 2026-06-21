@@ -5,8 +5,8 @@ const CONFIG_STORAGE_KEY = "internal-crm-config-v1";
 // Optional inline runtime config for deployments that prefer editing a file instead of using the setup screen.
 // Fill only public Supabase URL and anon key. Never put service_role key, database password, or private tokens here.
 window.CRM_CONFIG = window.CRM_CONFIG || {
-  supabaseUrl: "",
-  supabaseAnonKey: ""
+  supabaseUrl: "https://eplqmkiftafkvqdgvsfp.supabase.co",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwbHFta2lmdGFma3ZxZGd2c2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MzY1MDcsImV4cCI6MjA5NzExMjUwN30.sfAcajUcAl8mniP1FeOF94jKYCKybNAqf2xqtQpXm0c"
 };
 
 
