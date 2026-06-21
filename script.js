@@ -1,4499 +1,1615 @@
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-/*
-  ระบบ CRM ภายใน
-  Version: 1.5.0
-  Stack: GitHub Pages + Supabase
-  Files: README.md, index.html, script.js, style.css
-*/
+const APP_VERSION = "0.1.1";
+const CONFIG_STORAGE_KEY = "internal-crm-config-v1";
+// Optional inline runtime config for deployments that prefer editing a file instead of using the setup screen.
+// Fill only public Supabase URL and anon key. Never put service_role key, database password, or private tokens here.
+window.CRM_CONFIG = window.CRM_CONFIG || {
+  supabaseUrl: "",
+  supabaseAnonKey: ""
+};
 
-const APP_VERSION = '1.5.0'
 
-const CONFIG = {
-  supabaseUrl: 'https://eplqmkiftafkvqdgvsfp.supabase.co',
-  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwbHFta2lmdGFma3ZxZGd2c2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MzY1MDcsImV4cCI6MjA5NzExMjUwN30.sfAcajUcAl8mniP1FeOF94jKYCKybNAqf2xqtQpXm0c'
-}
+const ROUTES = {
+  MY_WORK: "my-work",
+  LEADS: "leads",
+  DEMOS: "demos",
+  CUSTOMERS: "customers",
+  TASKS: "tasks",
+  HISTORY: "history",
+  SETUP: "setup"
+};
 
-const ROLES = {
-  PENDING: 'pending',
-  ADMIN: 'admin',
-  MKT: 'mkt',
-  SALE: 'sale',
-  CS: 'cs',
-  MANAGER: 'manager'
-}
-
-const ROUTES = [
-  { key: 'dashboard', label: 'ภาพรวม', icon: '📊', roles: ['admin', 'mkt', 'sale', 'cs', 'manager'] },
-  { key: 'my-work', label: 'งานของฉัน', icon: '🧭', roles: ['admin', 'mkt', 'sale', 'cs', 'manager'] },
-  { key: 'leads', label: 'ลีด', icon: '🎯', roles: ['admin', 'mkt', 'sale', 'manager'] },
-  { key: 'accounts', label: 'บัญชี', icon: '🏢', roles: ['admin', 'mkt', 'sale', 'cs', 'manager'] },
-  { key: 'demo', label: 'เดโม', icon: '🧪', roles: ['admin', 'sale', 'cs', 'manager'] },
-  { key: 'customers', label: 'ลูกค้า', icon: '🤝', roles: ['admin', 'sale', 'cs', 'manager'] },
-  { key: 'tasks', label: 'งานติดตาม', icon: '✅', roles: ['admin', 'sale', 'cs', 'manager'] },
-  { key: 'training', label: 'อบรม', icon: '🎓', roles: ['admin', 'sale', 'cs', 'manager'] },
-  { key: 'reports', label: 'รายงาน', icon: '📈', roles: ['admin', 'manager'] },
-  { key: 'admin', label: 'ผู้ดูแล', icon: '⚙️', roles: ['admin'] }
-]
-
-const TABLES = {
-  profiles: 'profiles',
-  accounts: 'accounts',
-  contacts: 'account_contacts',
-  activities: 'account_activities',
-  demos: 'demo_sessions',
-  demoUsers: 'demo_users',
-  demoLogs: 'demo_logs',
-  customers: 'customer_profiles',
-  trainings: 'training_sessions',
-  trainingParticipants: 'training_participants',
-  modules: 'modules',
-  accountModules: 'account_modules',
-  tasks: 'tasks',
-  taskComments: 'task_comments',
-  assignmentHistory: 'assignment_history',
-  statusHistory: 'status_history',
-  lostReasons: 'lost_reasons',
-  leadSources: 'lead_sources',
-  campaigns: 'campaigns',
-  contactStatuses: 'contact_statuses',
-  businessTypes: 'business_types',
-  leadChannels: 'lead_channels',
-  accountCsOwners: 'account_cs_owners',
-  appSettings: 'app_settings'
-}
-
-const MASTER_TABLES = [
-  { key: 'leadSources', table: TABLES.leadSources, label: 'แหล่งที่มาs', nameField: 'name' },
-  { key: 'campaigns', table: TABLES.campaigns, label: 'แคมเปญs', nameField: 'name' },
-  { key: 'modules', table: TABLES.modules, label: 'สินค้า', nameField: 'module_name' },
-  { key: 'contactStatuses', table: TABLES.contactStatuses, label: 'Contact สถานะes', nameField: 'name' },
-  { key: 'businessTypes', table: TABLES.businessTypes, label: 'ประเภทธุรกิจ', nameField: 'name' },
-  { key: 'leadChannels', table: TABLES.leadChannels, label: 'ช่องทาง', nameField: 'name' },
-  { key: 'lostReasons', table: TABLES.lostReasons, label: 'เหตุผลที่ปิด', nameField: 'reason_name' }
-]
+const ROLE_LABELS = {
+  admin: "Admin",
+  manager: "Manager",
+  mkt: "Marketing",
+  sale: "Sale",
+  cs: "Customer Success"
+};
 
 const STAGE_LABELS = {
-  lead: 'Lead',
-  demo: 'เดโม',
-  customer: 'Customer',
-  lost: 'Lost'
-}
+  lead: "Lead",
+  demo: "Demo",
+  customer: "Customer",
+  lost: "Lost",
+  churn: "Churn",
+  archived: "Archived"
+};
 
-const STATUS_LABELS = {
-  new: 'New',
-  assigned: 'Assigned',
-  contacted: 'Contacted',
-  follow_up: 'ติดตามต่อ',
-  demo_requested: 'Demo Requested',
-  demo_active: 'Demo ใช้งาน',
-  customer_active: 'Customer ใช้งาน',
-  lost: 'Lost',
-  churned: 'Churned'
-}
+const TASK_STATUS_LABELS = {
+  open: "เปิดอยู่",
+  done: "เสร็จแล้ว",
+  cancelled: "ยกเลิก"
+};
+
+const DEMO_STATUS_LABELS = {
+  queued: "รอจัดคิว",
+  scheduled: "นัดแล้ว",
+  in_progress: "กำลังเดโม่",
+  completed: "จบเดโม่",
+  cancelled: "ยกเลิก",
+  lost: "ไม่ไปต่อ",
+  converted: "เป็นลูกค้าแล้ว"
+};
+
+const RISK_LABELS = {
+  low: "ต่ำ",
+  medium: "กลาง",
+  high: "สูง"
+};
+
+const app = document.querySelector("#app");
+const toastRoot = document.querySelector("#toast-root");
+
+let supabase = null;
+let authSubscription = null;
+let realtimeChannel = null;
+let isLoading = false;
 
 const state = {
-  client: null,
+  route: ROUTES.MY_WORK,
   session: null,
-  user: null,
   profile: null,
-  loading: false,
-  viewModes: {
-    leads: 'table',
-    accounts: 'table',
-    demo: 'table',
-    customers: 'table',
-    tasks: 'board',
-    training: 'calendar'
-  },
-  sidebarCollapsed: true,
-  modal: null,
+  profiles: [],
+  cases: [],
+  demos: [],
+  customers: [],
+  tasks: [],
+  activities: [],
+  selectedCaseId: null,
   filters: {
-    leads: { q: '', stage: 'lead', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 },
-    accounts: { q: '', stage: '', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 },
-    demo: { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 },
-    customers: { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 },
-    tasks: { q: '', status: '', owner: '', priority: '', sort: 'due_asc', page: 1, pageSize: 25 },
-    training: { q: '', status: '', owner: '', sort: 'date_asc', page: 1, pageSize: 25 }
-  },
-  accountTabs: {},
-  lastSyncedAt: null,
-  cache: {
-    profiles: [],
-    accounts: [],
-    contacts: [],
-    activities: [],
-    demos: [],
-    demoUsers: [],
-    demoLogs: [],
-    customers: [],
-    trainings: [],
-    trainingParticipants: [],
-    modules: [],
-    accountModules: [],
-    tasks: [],
-    taskComments: [],
-    assignmentHistory: [],
-    statusHistory: [],
-    lostReasons: [],
-    leadSources: [],
-    campaigns: [],
-    contactStatuses: [],
-    businessTypes: [],
-    leadChannels: [],
-    accountCsOwners: []
+    leads: "active",
+    demos: "active",
+    customers: "active",
+    tasks: "open",
+    search: ""
   }
+};
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-const app = document.getElementById('app')
-const toastRoot = document.getElementById('toast-root')
-let filterTimer = null
-let fieldSeq = 0
+function attr(value) {
+  return escapeHTML(value).replaceAll("`", "&#096;");
+}
 
-document.addEventListener('DOMContentLoaded', init)
-window.addEventListener('hashchange', () => render())
-document.addEventListener('click', onClick)
-document.addEventListener('submit', onSubmit)
-document.addEventListener('change', onChange)
-document.addEventListener('input', onInput)
+function fmtDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" }).format(date);
+}
 
-async function init() {
-  state.sidebarCollapsed = true
+function fmtDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
 
-  if (!isConfigured()) {
-    renderSetupRequired()
-    return
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysFromNowISO(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function role() {
+  return state.profile?.role || "guest";
+}
+
+function can(roleNames) {
+  return roleNames.includes(role());
+}
+
+function currentUserId() {
+  return state.session?.user?.id || null;
+}
+
+function profileName(profile) {
+  if (!profile) return "-";
+  return profile.full_name || profile.email || profile.id || "-";
+}
+
+function caseTitle(item) {
+  if (!item) return "-";
+  const company = item.company_name || "ไม่ระบุบริษัท";
+  const contact = item.contact_name ? ` / ${item.contact_name}` : "";
+  return `${company}${contact}`;
+}
+
+function caseNo(item) {
+  return item?.case_number ? `#${String(item.case_number).padStart(5, "0")}` : "-";
+}
+
+function badge(label, type = "muted") {
+  return `<span class="badge ${type}">${escapeHTML(label)}</span>`;
+}
+
+function stageBadge(stage) {
+  const type = stage === "customer" ? "success" : stage === "lost" || stage === "churn" ? "danger" : stage === "demo" ? "warning" : "primary";
+  return badge(STAGE_LABELS[stage] || stage, type);
+}
+
+function riskBadge(risk) {
+  const type = risk === "high" ? "danger" : risk === "medium" ? "warning" : "success";
+  return badge(RISK_LABELS[risk] || risk || "-", type);
+}
+
+function showToast(message, type = "success") {
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  toastRoot.appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+
+function showError(error, fallback = "เกิดข้อผิดพลาด") {
+  const message = error?.message || String(error || fallback);
+  console.error(error);
+  showToast(message, "error");
+}
+
+function getRuntimeConfig() {
+  const windowConfig = window.CRM_CONFIG || {};
+  const localConfig = JSON.parse(localStorage.getItem(CONFIG_STORAGE_KEY) || "{}");
+  const supabaseUrl = localConfig.supabaseUrl || windowConfig.supabaseUrl || "";
+  const supabaseAnonKey = localConfig.supabaseAnonKey || windowConfig.supabaseAnonKey || "";
+  return { supabaseUrl, supabaseAnonKey };
+}
+
+function hasRuntimeConfig() {
+  const config = getRuntimeConfig();
+  return Boolean(config.supabaseUrl && config.supabaseAnonKey);
+}
+
+function initSupabase() {
+  const config = getRuntimeConfig();
+  if (!config.supabaseUrl || !config.supabaseAnonKey) return null;
+
+  return createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
+}
+
+async function boot() {
+  if (!hasRuntimeConfig()) {
+    state.route = ROUTES.SETUP;
+    render();
+    return;
   }
+
+  supabase = initSupabase();
+  if (!supabase) {
+    renderSetup("กรุณาตั้งค่า Supabase URL และ anon key");
+    return;
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    showError(error);
+  }
+
+  state.session = data?.session || null;
+
+  if (authSubscription) authSubscription.unsubscribe();
+  authSubscription = supabase.auth.onAuthStateChange(async (_event, session) => {
+    state.session = session;
+    if (session) {
+      await loadCurrentUser();
+      await refreshData();
+      setupRealtime();
+    } else {
+      state.profile = null;
+      state.profiles = [];
+      state.cases = [];
+      state.demos = [];
+      state.customers = [];
+      state.tasks = [];
+      state.activities = [];
+      cleanupRealtime();
+      render();
+    }
+  }).data.subscription;
+
+  if (state.session) {
+    await loadCurrentUser();
+    await refreshData();
+    setupRealtime();
+  }
+
+  bindVisibilityReconnect();
+  render();
+}
+
+async function loadCurrentUser() {
+  if (!state.session) return;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id,email,full_name,role,is_active")
+    .eq("id", state.session.user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  state.profile = data;
+}
+
+async function refreshData() {
+  if (!state.session || !state.profile) return;
+  isLoading = true;
+  render();
 
   try {
-    state.client = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    })
-
-    const { data, error } = await state.client.auth.getSession()
-    if (error) throw error
-    state.session = data.session
-    state.user = data.session?.user || null
-
-    state.client.auth.onAuthStateChange(async (_event, session) => {
-      state.session = session
-      state.user = session?.user || null
-      if (state.user) {
-        await bootstrapUser()
-      } else {
-        state.profile = null
-        resetCache()
-      }
-      render()
-    })
-
-    if (state.user) {
-      await bootstrapUser()
-    }
-
-    render()
+    await Promise.all([
+      loadProfiles(),
+      loadCases(),
+      loadDemos(),
+      loadCustomers(),
+      loadTasks()
+    ]);
   } catch (error) {
-    renderFatalError(error)
+    showError(error, "โหลดข้อมูลไม่สำเร็จ");
+  } finally {
+    isLoading = false;
+    render();
   }
 }
 
-function isConfigured() {
-  return CONFIG.supabaseUrl.startsWith('https://') &&
-    !CONFIG.supabaseUrl.includes('YOUR_PROJECT_REF') &&
-    CONFIG.supabaseAnonKey &&
-    !CONFIG.supabaseAnonKey.includes('YOUR_SUPABASE_ANON_KEY')
+async function loadProfiles() {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id,email,full_name,role,is_active")
+    .eq("is_active", true)
+    .order("role", { ascending: true })
+    .order("full_name", { ascending: true });
+
+  if (error) throw error;
+  state.profiles = data || [];
 }
 
-function resetCache() {
-  Object.keys(state.cache).forEach((key) => {
-    state.cache[key] = []
-  })
+const CASE_SELECT = `
+  id,case_number,stage,source_team,source_channel,company_name,contact_name,contact_email,contact_phone,
+  interested_product,interest_level,qualification_notes,current_need,lost_reason,churn_reason,churned_at,
+  next_follow_up_at,owner_sale_id,owner_cs_id,created_by,created_at,updated_at,converted_to_customer_at,
+  owner_sale:profiles!crm_cases_owner_sale_id_fkey(id,email,full_name,role),
+  owner_cs:profiles!crm_cases_owner_cs_id_fkey(id,email,full_name,role),
+  creator:profiles!crm_cases_created_by_fkey(id,email,full_name,role)
+`;
+
+async function loadCases() {
+  const { data, error } = await supabase
+    .from("crm_cases")
+    .select(CASE_SELECT)
+    .is("archived_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(500);
+
+  if (error) throw error;
+  state.cases = data || [];
 }
 
-async function bootstrapUser() {
-  state.loading = true
-  renderLoading('กำลังโหลดสิทธิ์ผู้ใช้...')
-  await loadProfile()
-  if (isActiveUser()) {
-    await loadAllData()
+async function loadDemos() {
+  const { data, error } = await supabase
+    .from("demo_sessions")
+    .select(`
+      id,case_id,demo_status,scheduled_at,start_date,end_date,actual_start_at,actual_end_at,
+      demo_users,requirements,demo_result,notes,next_follow_up_at,created_by,assigned_cs_id,created_at,updated_at,
+      crm_cases(${CASE_SELECT}),
+      assigned_cs:profiles!demo_sessions_assigned_cs_id_fkey(id,email,full_name,role)
+    `)
+    .order("updated_at", { ascending: false })
+    .limit(500);
+
+  if (error) throw error;
+  state.demos = data || [];
+}
+
+async function loadCustomers() {
+  const { data, error } = await supabase
+    .from("customer_profiles")
+    .select(`
+      id,case_id,customer_since,plan_name,billing_cycle,renewal_date,risk_level,health_status,usage_status,
+      training_status,notes,created_at,updated_at,
+      crm_cases(${CASE_SELECT})
+    `)
+    .order("updated_at", { ascending: false })
+    .limit(500);
+
+  if (error) throw error;
+  state.customers = data || [];
+}
+
+async function loadTasks() {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(`
+      id,case_id,title,task_type,status,priority,due_date,assigned_to,created_by,completed_at,notes,created_at,updated_at,
+      crm_cases(id,case_number,stage,company_name,contact_name,owner_sale_id,owner_cs_id),
+      assignee:profiles!tasks_assigned_to_fkey(id,email,full_name,role),
+      creator:profiles!tasks_created_by_fkey(id,email,full_name,role)
+    `)
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .order("updated_at", { ascending: false })
+    .limit(500);
+
+  if (error) throw error;
+  state.tasks = data || [];
+}
+
+async function loadActivities(caseId) {
+  const { data, error } = await supabase
+    .from("case_activities")
+    .select(`
+      id,case_id,actor_id,activity_type,from_stage,to_stage,title,description,metadata,created_at,
+      actor:profiles!case_activities_actor_id_fkey(id,email,full_name,role)
+    `)
+    .eq("case_id", caseId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) throw error;
+  state.activities = data || [];
+}
+
+function bindVisibilityReconnect() {
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+}
+
+async function handleVisibilityChange() {
+  if (document.visibilityState !== "visible" || !supabase || !state.session) return;
+  await supabase.auth.getSession();
+  setupRealtime();
+}
+
+function cleanupRealtime() {
+  if (realtimeChannel && supabase) {
+    supabase.removeChannel(realtimeChannel);
   }
-  state.loading = false
+  realtimeChannel = null;
 }
 
-async function loadProfile() {
-  const { data, error } = await state.client
-    .from(TABLES.profiles)
-    .select('*')
-    .eq('id', state.user.id)
-    .maybeSingle()
+function setupRealtime() {
+  if (!supabase || !state.session) return;
+  cleanupRealtime();
 
-  if (error) throw error
-  state.profile = data || {
-    id: state.user.id,
-    email: state.user.email,
-    role: ROLES.PENDING,
-    is_active: false
-  }
-}
-
-function isActiveUser() {
-  return Boolean(state.profile && state.profile.is_active && state.profile.role !== ROLES.PENDING)
-}
-
-function hasRole(roles) {
-  if (!Array.isArray(roles)) return false
-  return roles.includes(state.profile?.role)
-}
-
-function isAdmin() {
-  return state.profile?.role === ROLES.ADMIN
-}
-
-function isManager() {
-  return state.profile?.role === ROLES.MANAGER
-}
-
-function isReadOnly() {
-  return isManager()
-}
-
-async function loadAllData() {
-  const tables = [
-    ['profiles', TABLES.profiles, '*', 'display_name'],
-    ['accounts', TABLES.accounts, '*', 'updated_at'],
-    ['contacts', TABLES.contacts, '*', 'created_at'],
-    ['activities', TABLES.activities, '*', 'created_at'],
-    ['demos', TABLES.demos, '*', 'updated_at'],
-    ['demoUsers', TABLES.demoUsers, '*', 'created_at'],
-    ['demoLogs', TABLES.demoLogs, '*', 'created_at'],
-    ['customers', TABLES.customers, '*', 'updated_at'],
-    ['trainings', TABLES.trainings, '*', 'training_date'],
-    ['trainingParticipants', TABLES.trainingParticipants, '*', 'created_at'],
-    ['modules', TABLES.modules, '*', 'module_name'],
-    ['accountModules', TABLES.accountModules, '*', 'created_at'],
-    ['tasks', TABLES.tasks, '*', 'due_at'],
-    ['taskComments', TABLES.taskComments, '*', 'created_at'],
-    ['assignmentHistory', TABLES.assignmentHistory, '*', 'created_at'],
-    ['statusHistory', TABLES.statusHistory, '*', 'created_at'],
-    ['lostReasons', TABLES.lostReasons, '*', 'reason_name'],
-    ['leadSources', TABLES.leadSources, '*', 'name'],
-    ['campaigns', TABLES.campaigns, '*', 'name'],
-    ['contactStatuses', TABLES.contactStatuses, '*', 'name'],
-    ['businessTypes', TABLES.businessTypes, '*', 'name'],
-    ['leadChannels', TABLES.leadChannels, '*', 'name'],
-    ['accountCsOwners', TABLES.accountCsOwners, '*', 'created_at']
-  ]
-
-  const results = await Promise.all(tables.map(async ([cacheKey, table, select, order]) => {
-    let query = state.client.from(table).select(select)
-    if (order === 'updated_at' || order === 'created_at') {
-      query = query.order(order, { ascending: false })
-    } else {
-      query = query.order(order, { ascending: true, nullsFirst: false })
-    }
-
-    const { data, error } = await query
-    if (error) throw new Error(`${table}: ${error.message}`)
-    return [cacheKey, data || []]
-  }))
-
-  for (const [cacheKey, rows] of results) {
-    state.cache[cacheKey] = rows
-  }
-  state.lastSyncedAt = new Date().toISOString()
+  realtimeChannel = supabase
+    .channel("internal-crm-realtime")
+    .on("postgres_changes", { event: "*", schema: "public", table: "crm_cases" }, () => refreshData())
+    .on("postgres_changes", { event: "*", schema: "public", table: "demo_sessions" }, () => refreshData())
+    .on("postgres_changes", { event: "*", schema: "public", table: "customer_profiles" }, () => refreshData())
+    .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, () => refreshData())
+    .on("postgres_changes", { event: "*", schema: "public", table: "case_activities" }, () => {
+      if (state.selectedCaseId) loadActivities(state.selectedCaseId).then(render);
+    })
+    .subscribe();
 }
 
 function render() {
-  if (!isConfigured()) {
-    renderSetupRequired()
-    return
+  if (state.route === ROUTES.SETUP || !hasRuntimeConfig()) {
+    renderSetup();
+    return;
   }
 
-  if (!state.user) {
-    renderLogin()
-    return
+  if (!state.session) {
+    renderLogin();
+    return;
   }
 
-  if (!isActiveUser()) {
-    renderPending()
-    return
+  if (!state.profile) {
+    app.innerHTML = layoutShell(`<div class="error-box">ไม่พบ profile ของผู้ใช้ กรุณาตรวจ trigger profiles หรือ role ใน Supabase</div>`);
+    return;
   }
 
-  const route = getRoute()
-
-  if (route.key === 'unauthorized') {
-    app.innerHTML = renderAppLayout('ไม่มีสิทธิ์เข้าถึง', renderUnauthorized(), '')
-    return
-  }
-
-  if (route.key === 'not-found') {
-    app.innerHTML = renderAppLayout('ไม่พบหน้า', renderNotFound(), '')
-    return
-  }
-
-  const nav = route.key === 'account'
-    ? { key: 'accounts', label: 'บัญชี Detail', roles: ['admin', 'mkt', 'sale', 'cs', 'manager'] }
-    : ROUTES.find((item) => item.key === route.key)
-
-  if (!nav) {
-    app.innerHTML = renderAppLayout('ไม่พบหน้า', renderNotFound(), '')
-    return
-  }
-
-  if (!hasRole(nav.roles)) {
-    app.innerHTML = renderAppLayout('ไม่มีสิทธิ์เข้าถึง', renderUnauthorized(), '')
-    return
-  }
-
-  app.innerHTML = renderAppLayout(nav.label, renderRoute(route), nav.key)
+  const page = renderRoute();
+  app.innerHTML = layoutShell(page);
 }
 
-
-function renderAppLayout(title, content, activeKey) {
-  const collapsedClass = state.sidebarCollapsed ? 'sidebar-collapsed' : ''
-  return `
-    <div class="app-layout ${collapsedClass}">
-      ${renderSidebar(activeKey)}
-      <main class="main">
-        ${renderTopbar(title)}
-        <section class="content" id="page-content">
-          ${content}
-        </section>
-      </main>
-      ${renderModal()}
-    </div>
-  `
-}
-
-function renderSidebar(activeKey) {
-  const links = ROUTES
-    .filter((item) => hasRole(item.roles))
-    .map((item) => `
-      <button class="nav-link ${activeKey === item.key ? 'active' : ''}" data-nav="${item.key}" type="button" title="${escapeAttr(item.label)}" aria-label="${escapeAttr(item.label)}">
-        <span class="nav-icon" aria-hidden="true">${item.icon}</span><span class="nav-label">${escapeHTML(item.label)}</span>
-      </button>
-    `).join('')
-
-  return `
-    <aside class="sidebar" aria-label="Main navigation">
-      <div class="brand">
-        <div class="brand-mark">CRM</div>
-        <div class="brand-copy">
-          <span class="brand-title">ระบบ CRM ภายใน</span>
-          <span class="brand-version">v${APP_VERSION}</span>
-        </div>
-        <button class="sidebar-toggle" type="button" data-action="toggle-sidebar" title="${state.sidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'}" aria-label="${state.sidebarCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'}">
-          ${state.sidebarCollapsed ? '›' : '‹'}
-        </button>
-      </div>
-      <nav class="nav">${links}</nav>
-      <div class="sidebar-footer">
-        <div class="nav-label">${escapeHTML(roleLabel(state.profile.role))}</div>
-        <div class="nav-label">${escapeHTML(state.profile.display_name || state.profile.email || '')}</div>
-      </div>
-    </aside>
-  `
-}
-
-function renderTopbar(title) {
-  return `
-    <header class="topbar">
-      <div>
-        <h1>${escapeHTML(title)}</h1>
-        <div class="topbar-meta">อัปเดตล่าสุด: ${state.lastSyncedAt ? formatDateTime(state.lastSyncedAt) : '-'}</div>
-      </div>
-      <div class="user-chip">
-        <span>${escapeHTML(state.profile.display_name || state.profile.email || '')}</span>
-        <span class="role-pill">${escapeHTML(roleLabel(state.profile.role))}</span>
-        <button class="btn small" type="button" data-action="refresh-data">รีเฟรช</button>
-        <button class="btn small" type="button" data-action="logout">ออกจากระบบ</button>
-      </div>
-    </header>
-  `
-}
-function renderRoute(route) {
-  if (route.key === 'dashboard') return renderDashboard()
-  if (route.key === 'my-work') return renderMyWork()
-  if (route.key === 'leads') return renderLeads()
-  if (route.key === 'accounts') return renderAccounts()
-  if (route.key === 'account') return renderAccountDetail(route.id)
-  if (route.key === 'demo') return renderDemo()
-  if (route.key === 'customers') return renderCustomers()
-  if (route.key === 'tasks') return renderTasks()
-  if (route.key === 'training') return renderTraining()
-  if (route.key === 'reports') return renderReports()
-  if (route.key === 'admin') return renderAdmin()
-  if (route.key === 'unauthorized') return renderUnauthorized()
-  if (route.key === 'not-found') return renderNotFound()
-  return renderNotFound()
-}
-
-function getRoute() {
-  const hash = (location.hash || '#/dashboard').replace(/^#\/?/, '')
-  const [key, id] = hash.split('/')
-  if (key === 'account' && id) return { key: 'account', id }
-  return { key: key || 'dashboard' }
-}
-
-function renderSetupRequired() {
+function renderSetup(errorMessage = "") {
   app.innerHTML = `
-    <div class="center-screen">
-      <div class="setup-card">
-        <h1>ต้องตั้งค่า Supabase ก่อน</h1>
-        <p>เปิดไฟล์ <strong>script.js</strong> แล้วแก้ค่า <code>CONFIG.supabaseUrl</code> และ <code>CONFIG.supabaseAnonKey</code> ให้ตรงกับโปรเจกต์ Supabase ของคุณ</p>
-        <pre class="code-block">const CONFIG = {
-  supabaseUrl: 'https://YOUR_PROJECT_REF.supabase.co',
-  supabaseAnonKey: 'YOUR_SUPABASE_ANON_KEY'
-}</pre>
-        <p class="muted">ห้ามใช้ service_role key ใน frontend</p>
-      </div>
-    </div>
-  `
-}
-
-function renderFatalError(error) {
-  app.innerHTML = `
-    <div class="center-screen">
-      <div class="setup-card">
-        <h1>โหลดระบบไม่สำเร็จ</h1>
-        <p>${escapeHTML(error.message || String(error))}</p>
-      </div>
-    </div>
-  `
-}
-
-function renderLoading(message) {
-  app.innerHTML = `
-    <div class="boot-screen">
-      <div class="spinner"></div>
-      <p>${escapeHTML(message || 'กำลังโหลด...')}</p>
-    </div>
-  `
+    <main class="setup-layout">
+      <section class="setup-card">
+        ${brandBlock()}
+        <h2>ตั้งค่า Supabase</h2>
+        <p class="inline-help">ใส่ Supabase URL และ anon key เท่านั้น ห้ามใส่ service_role key หรือ database password</p>
+        ${errorMessage ? `<div class="error-box">${escapeHTML(errorMessage)}</div>` : ""}
+        <form class="form" data-action="save-config">
+          <div class="field">
+            <label for="supabaseUrl">Supabase URL</label>
+            <input id="supabaseUrl" name="supabaseUrl" placeholder="https://YOUR_PROJECT_ID.supabase.co" required />
+          </div>
+          <div class="field">
+            <label for="supabaseAnonKey">Supabase anon key</label>
+            <textarea id="supabaseAnonKey" name="supabaseAnonKey" placeholder="public anon key" required></textarea>
+          </div>
+          <button class="btn primary" type="submit">บันทึกและเริ่มใช้งาน</button>
+        </form>
+      </section>
+    </main>
+  `;
 }
 
 function renderLogin() {
   app.innerHTML = `
-    <div class="center-screen auth-screen">
-      <form class="login-card" data-form="login" novalidate>
-        <div class="brand-lockup">
-          <div class="brand-mark">CRM</div>
-          <div>
-            <h1>ระบบ CRM ภายใน</h1>
-            <p>ระบบจัดการ Lead, Demo, Customer, Training และ Task สำหรับทีมภายใน</p>
-          </div>
-        </div>
-        <div class="form-grid single">
+    <main class="auth-layout">
+      <section class="auth-card">
+        ${brandBlock()}
+        <form class="form" data-action="login">
           <div class="field">
-            <label for="login-email">อีเมลองค์กร</label>
-            <input id="login-email" name="email" type="email" required autocomplete="email" placeholder="name@company.com">
+            <label for="email">อีเมล</label>
+            <input id="email" name="email" type="email" autocomplete="email" required />
           </div>
           <div class="field">
-            <label for="login-password">รหัสผ่าน</label>
-            <input id="login-password" name="password" type="password" required autocomplete="current-password" placeholder="กรอกรหัสผ่าน">
+            <label for="password">รหัสผ่าน</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
           </div>
-          <button class="btn primary block" type="submit">เข้าสู่ระบบ</button>
-        </div>
-        <div class="auth-help">
-          <strong>เข้าไม่ได้?</strong> ตรวจสอบว่า Admin เปิดสิทธิ์และตั้ง role ให้บัญชีนี้แล้ว หากลืมรหัสผ่านให้รีเซ็ตจาก Supabase Auth หรือติดต่อผู้ดูแลระบบ
-        </div>
-        <div class="login-foot">Production · v${APP_VERSION}</div>
-      </form>
-    </div>
-  `
+          <button class="btn primary" type="submit">เข้าสู่ระบบ</button>
+          <p class="inline-help">ระบบนี้ใช้ Supabase Auth สำหรับผู้ใช้ภายใน อีเมล/รหัสผ่านต้องถูกสร้างใน Supabase Auth ก่อน</p>
+        </form>
+      </section>
+    </main>
+  `;
 }
-function renderPending() {
-  app.innerHTML = `
-    <div class="center-screen auth-screen">
-      <div class="pending-card">
-        <h1>บัญชียังไม่พร้อมใช้งาน</h1>
-        <p>บัญชีนี้เข้าสู่ระบบได้แล้ว แต่ยังต้องให้ Admin กำหนด role และเปิดสถานะ ใช้งาน ก่อนใช้งานระบบ</p>
-        <div class="meta-grid">
-          <div class="meta-label">อีเมล</div><div>${escapeHTML(state.user.email || '')}</div>
-          <div class="meta-label">สิทธิ์</div><div>${escapeHTML(state.profile?.role || 'pending')}</div>
-          <div class="meta-label">ใช้งาน</div><div>${state.profile?.is_active ? 'Yes' : 'No'}</div>
-        </div>
-        <div class="callout warning">
-          แจ้ง Admin ให้เข้าเมนู Admin Settings → ผู้ใช้ / สิทธิ์ แล้วตั้ง role และ status เป็น ใช้งาน
-        </div>
-        <hr>
-        <button class="btn" type="button" data-action="logout">ออกจากระบบ</button>
+
+function brandBlock() {
+  return `
+    <div class="brand">
+      <div class="brand-mark">CRM</div>
+      <div>
+        <h1 class="brand-title">Internal CRM</h1>
+        <p class="brand-subtitle">Lead → Demo → Customer journey</p>
       </div>
     </div>
-  `
+  `;
 }
-function renderDashboard() {
-  const accounts = state.cache.accounts
-  const leads = accounts.filter((a) => a.lifecycle_stage === 'lead')
-  const demos = accounts.filter((a) => a.lifecycle_stage === 'demo')
-  const customers = accounts.filter((a) => a.lifecycle_stage === 'customer')
-  const lost = accounts.filter((a) => a.lifecycle_stage === 'lost')
-  const tasks = state.cache.tasks
-  const overdue = tasks.filter((t) => t.status !== 'done' && t.due_at && new Date(t.due_at) < startOfToday())
-  const todayTrainings = state.cache.trainings.filter((t) => t.training_date === todayISO())
+
+function layoutShell(content) {
+  const navItems = [
+    [ROUTES.MY_WORK, "งานของฉัน"],
+    [ROUTES.LEADS, "Lead"],
+    [ROUTES.DEMOS, "Demo"],
+    [ROUTES.CUSTOMERS, "Customer"],
+    [ROUTES.TASKS, "Task"],
+    [ROUTES.HISTORY, "History"]
+  ];
+
+  const nav = navItems.map(([key, label]) => `
+    <button class="nav-button ${state.route === key ? "active" : ""}" data-route="${attr(key)}" type="button">
+      <span>${escapeHTML(label)}</span>
+    </button>
+  `).join("");
 
   return `
-    <div class="page-header">
+    <div class="layout">
+      <aside class="sidebar">
+        ${brandBlock()}
+        <nav class="nav">${nav}</nav>
+        <div class="user-box">
+          <strong>${escapeHTML(profileName(state.profile))}</strong>
+          <span>${escapeHTML(ROLE_LABELS[role()] || role())}</span>
+          <span>${escapeHTML(state.profile?.email || "")}</span>
+          <div class="actions" style="margin-top:12px">
+            <button class="btn ghost" data-action="refresh" type="button">รีเฟรช</button>
+            <button class="btn ghost" data-action="logout" type="button">ออก</button>
+          </div>
+        </div>
+      </aside>
+      <main class="content">
+        ${isLoading ? `<div class="inline-help">กำลังโหลดข้อมูล...</div>` : ""}
+        ${content}
+      </main>
+      ${state.selectedCaseId ? renderCaseDrawer() : ""}
+    </div>
+  `;
+}
+
+function renderRoute() {
+  switch (state.route) {
+    case ROUTES.MY_WORK:
+      return renderMyWork();
+    case ROUTES.LEADS:
+      return renderLeads();
+    case ROUTES.DEMOS:
+      return renderDemos();
+    case ROUTES.CUSTOMERS:
+      return renderCustomers();
+    case ROUTES.TASKS:
+      return renderTasks();
+    case ROUTES.HISTORY:
+      return renderHistory();
+    default:
+      return renderMyWork();
+  }
+}
+
+function pageHeader(title, subtitle, actions = "") {
+  return `
+    <div class="topbar">
       <div>
-        <h2>ภาพรวมระบบ</h2>
-        <p>สรุป Lead, Demo, Customer, Lost, Task และ Training ตามสิทธิ์ของผู้ใช้</p>
+        <h2 class="page-title">${escapeHTML(title)}</h2>
+        <p class="page-subtitle">${escapeHTML(subtitle)}</p>
       </div>
-      <div class="actions">
-        <button class="btn primary" type="button" data-nav="my-work">ดูงานของฉัน</button>
-        <button class="btn" type="button" data-action="print">พิมพ์</button>
-      </div>
+      <div class="actions">${actions}</div>
     </div>
-
-    <div class="grid grid-4">
-      ${renderKpi('Lead', leads.length, 'กำลัง qualify')}
-      ${renderKpi('เดโม', demos.length, 'อยู่ใน demo flow')}
-      ${renderKpi('Customer', customers.length, 'ลูกค้าปัจจุบัน')}
-      ${renderKpi('Lost/Churn', lost.length, 'ปิดเป็น lost')}
-    </div>
-
-    <div class="grid grid-3" style="margin-top:16px">
-      ${renderKpi('เปิด Tasks', tasks.filter((t) => !['done', 'cancelled'].includes(t.status)).length, 'งานที่ยังไม่ปิด')}
-      ${renderKpi('Overdue', overdue.length, 'งานเลยกำหนด')}
-      ${renderKpi('Training Today', todayTrainings.length, 'สอนใช้งานวันนี้')}
-    </div>
-
-    <div class="grid grid-2" style="margin-top:16px">
-      <div class="card">
-        <h3>Lead Journey Snapshot</h3>
-        ${renderMiniJourney()}
-      </div>
-      <div class="card">
-        <h3>งานด่วน / ใกล้ครบกำหนด</h3>
-        ${renderTaskList(overdue.concat(tasks.filter((t) => t.status !== 'done')).slice(0, 6), true)}
-      </div>
-    </div>
-  `
+  `;
 }
 
 function renderMyWork() {
-  const accounts = state.cache.accounts
-  const tasks = state.cache.tasks.filter((task) => task.assigned_to === state.user.id || isAdmin() || isManager())
-  const openTasks = tasks.filter((task) => !['done', 'cancelled'].includes(task.status))
-  const overdue = openTasks.filter((task) => task.due_at && new Date(task.due_at) < startOfToday())
-  const todayTasks = openTasks.filter((task) => datePart(task.due_at) === todayISO())
-  const myLeads = accounts.filter((account) => account.lifecycle_stage === 'lead' && (account.sale_owner_id === state.user.id || isAdmin() || isManager()))
-  const demoEndingSoon = state.cache.demos
-    .filter((demo) => demo.end_date && ['requested', 'active', 'extended'].includes(demo.demo_status || ''))
-    .filter((demo) => daysFromToday(demo.end_date) <= 7 && daysFromToday(demo.end_date) >= 0)
+  const me = currentUserId();
+  const leadDue = state.cases.filter(item =>
+    item.stage === "lead" &&
+    item.owner_sale_id === me &&
+    item.next_follow_up_at &&
+    item.next_follow_up_at <= daysFromNowISO(7)
+  );
+
+  const myOpenTasks = state.tasks.filter(task =>
+    task.status === "open" &&
+    task.assigned_to === me
+  );
+
+  const demoEnding = state.demos.filter(demo =>
+    ["queued", "scheduled", "in_progress"].includes(demo.demo_status) &&
+    demo.end_date &&
+    demo.end_date <= daysFromNowISO(7) &&
+    (can(["admin", "manager", "cs"]) || demo.crm_cases?.owner_sale_id === me)
+  );
+
+  const highRisk = state.customers.filter(customer =>
+    customer.risk_level === "high" &&
+    can(["admin", "manager", "cs"])
+  );
 
   return `
-    <div class="page-header">
-      <div>
-        <h2>งานของฉัน</h2>
-        <p>รวมรายการที่ควรทำต่อวันนี้ แยกตามสิทธิ์และบทบาทของผู้ใช้</p>
-      </div>
-      <div class="actions">
-        <button class="btn" type="button" data-action="refresh-data">รีเฟรช</button>
-      </div>
-    </div>
+    ${pageHeader("งานของฉัน", "รายการที่ควรทำต่อทันทีตาม role และ due date")}
+    <section class="grid grid-3">
+      ${metricCard("Task เปิดอยู่", myOpenTasks.length)}
+      ${metricCard("Lead ต้องติดตาม", leadDue.length)}
+      ${metricCard("Demo ใกล้สิ้นสุด", demoEnding.length)}
+    </section>
 
-    <div class="grid grid-4">
-      ${renderKpi('Lead ที่ดูแล', myLeads.length, 'Lead ที่ต้องติดตาม')}
-      ${renderKpi('Task วันนี้', todayTasks.length, 'ครบกำหนดวันนี้')}
-      ${renderKpi('Overdue', overdue.length, 'เลยกำหนด')}
-      ${renderKpi('Demo ใกล้หมด', demoEndingSoon.length, 'ภายใน 7 วัน')}
-    </div>
-
-    <div class="grid grid-2" style="margin-top:16px">
-      <div class="card">
-        <h3>งานที่ต้องทำก่อน</h3>
-        ${renderTaskList(overdue.concat(todayTasks).slice(0, 8), true)}
-      </div>
-      <div class="card">
-        <h3>Lead ที่ควรติดตาม</h3>
-        ${renderAccountList(myLeads.slice(0, 8))}
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <h3>Demo ใกล้หมดอายุ</h3>
-      ${simpleRowsTable(['บัญชี', 'สถานะ', 'Start', 'End', ''], demoEndingSoon.map((demo) => [
-        accountTitle(findAccount(demo.account_id)),
-        badge(demo.demo_status || '-'),
-        formatDate(demo.start_date),
-        formatDate(demo.end_date),
-        `<button class="btn small" type="button" data-nav-account="${demo.account_id}">เปิด</button>`
-      ]))}
-    </div>
-  `
+    <section class="grid grid-2" style="margin-top:16px">
+      ${panel("Task ของฉัน", renderTaskMiniList(myOpenTasks))}
+      ${panel("Lead ที่ต้องติดตาม", renderCaseMiniList(leadDue))}
+      ${panel("Demo ใกล้สิ้นสุด", renderDemoMiniList(demoEnding))}
+      ${panel("Customer ความเสี่ยงสูง", renderCustomerMiniList(highRisk))}
+    </section>
+  `;
 }
 
-function renderUnauthorized() {
+function metricCard(label, number) {
   return `
-    <div class="center-card">
-      <h2>คุณไม่มีสิทธิ์เข้าหน้านี้</h2>
-      <p class="muted">สิทธิ์ปัจจุบันของคุณคือ ${escapeHTML(roleLabel(state.profile?.role || 'pending'))} หากคิดว่าเป็นข้อผิดพลาด กรุณาติดต่อ Admin เพื่อปรับ role หรือ active status</p>
-      <div class="actions">
-        <button class="btn primary" type="button" data-nav="dashboard">กลับ Dashboard</button>
-        <button class="btn" type="button" data-action="refresh-data">รีเฟรช สิทธิ์</button>
-      </div>
+    <div class="card metric">
+      <div class="metric-number">${escapeHTML(number)}</div>
+      <div class="metric-label">${escapeHTML(label)}</div>
     </div>
-  `
+  `;
 }
 
-function renderNotFound() {
+function panel(title, body) {
   return `
-    <div class="center-card">
-      <h2>ไม่พบหน้าที่ต้องการ</h2>
-      <p class="muted">ลิงก์อาจไม่ถูกต้อง หรือรายการนี้อาจถูกลบ/ไม่มีสิทธิ์เข้าถึง</p>
-      <div class="actions">
-        <button class="btn primary" type="button" data-nav="dashboard">กลับ Dashboard</button>
-        <button class="btn" type="button" data-nav="accounts">ไปหน้า บัญชีs</button>
-      </div>
-    </div>
-  `
+    <section class="panel">
+      <div class="panel-header"><h3 class="panel-title">${escapeHTML(title)}</h3></div>
+      <div class="panel-body">${body}</div>
+    </section>
+  `;
 }
 
-
-function renderKpi(label, value, hint) {
-  return `
-    <div class="card kpi">
-      <div class="kpi-value">${Number(value || 0).toLocaleString()}</div>
-      <div class="kpi-label">${escapeHTML(label)}</div>
-      <div class="help">${escapeHTML(hint || '')}</div>
-    </div>
-  `
+function renderCaseMiniList(items) {
+  if (!items.length) return `<div class="empty">ยังไม่มีรายการ</div>`;
+  return `<div class="list">${items.slice(0, 8).map(renderCaseCard).join("")}</div>`;
 }
 
-function renderMiniJourney() {
-  const rows = [
-    ['Lead → Lost', countPath('lead_lost')],
-    ['Lead → Customer', countPath('lead_customer')],
-    ['Lead → Demo → Lost', countPath('demo_lost')],
-    ['Lead → Demo → Customer', countPath('demo_customer')],
-    ['Customer → Lost/Churn', countPath('customer_lost')]
-  ]
-
-  return `
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Journey</th><th>จำนวน</th></tr></thead>
-        <tbody>${rows.map(([label, value]) => `<tr><td>${escapeHTML(label)}</td><td>${value}</td></tr>`).join('')}</tbody>
-      </table>
-    </div>
-  `
+function renderDemoMiniList(items) {
+  if (!items.length) return `<div class="empty">ยังไม่มีรายการ</div>`;
+  return `<div class="list">${items.slice(0, 8).map(renderDemoCard).join("")}</div>`;
 }
 
-function countPath(type) {
-  const accounts = state.cache.accounts
-  if (type === 'lead_lost') return accounts.filter((a) => a.lifecycle_stage === 'lost' && a.lost_from_stage === 'lead').length
-  if (type === 'demo_lost') return accounts.filter((a) => a.lifecycle_stage === 'lost' && a.lost_from_stage === 'demo').length
-  if (type === 'customer_lost') return accounts.filter((a) => a.lifecycle_stage === 'lost' && a.lost_from_stage === 'customer').length
-  if (type === 'lead_customer') return accounts.filter((a) => a.lifecycle_stage === 'customer' && !hasDemo(a.id)).length
-  if (type === 'demo_customer') return accounts.filter((a) => a.lifecycle_stage === 'customer' && hasDemo(a.id)).length
-  return 0
+function renderCustomerMiniList(items) {
+  if (!items.length) return `<div class="empty">ยังไม่มีรายการ</div>`;
+  return `<div class="list">${items.slice(0, 8).map(renderCustomerCard).join("")}</div>`;
 }
 
-function hasDemo(accountId) {
-  return state.cache.demos.some((demo) => demo.account_id === accountId)
+function renderTaskMiniList(items) {
+  if (!items.length) return `<div class="empty">ยังไม่มีรายการ</div>`;
+  return `<div class="list">${items.slice(0, 8).map(renderTaskCard).join("")}</div>`;
 }
-
 
 function renderLeads() {
-  const leadJourneys = state.cache.accounts
-  const filter = getFilter('leads')
-  if (filter.stage === undefined || filter.stage === null) filter.stage = 'lead'
-
-  const tabs = [
-    ['', 'ทั้งหมด'],
-    ['lead', 'ใช้งาน Lead'],
-    ['demo', 'อยู่ใน Demo'],
-    ['customer', 'เป็น Customer แล้ว'],
-    ['lost', 'Lost / Churn']
-  ]
+  const canCreateLead = can(["admin", "mkt", "sale"]);
+  const activeStages = state.filters.leads === "lost" ? ["lost"] : state.filters.leads === "all" ? ["lead", "demo", "customer", "lost", "churn"] : ["lead"];
+  const items = state.cases.filter(item => activeStages.includes(item.stage));
 
   return `
-    <div class="page-header">
-      <div>
-        <h2>Lead Journey</h2>
-        <p>Default แสดง Lead ที่ยัง active แต่ข้อมูลที่เปลี่ยนเป็น Demo / Customer / Lost ยังดูต่อได้จาก tab อื่น</p>
+    ${pageHeader("Lead", "สร้าง ติดตาม ส่ง Demo หรือปิด Lost โดยข้อมูล journey ไม่หาย", canCreateLead ? `<button class="btn primary" data-action="toggle-create-lead" type="button">+ สร้าง Lead</button>` : "")}
+    ${canCreateLead ? renderLeadForm() : ""}
+    ${renderLeadFilters()}
+    <div class="list">${items.length ? items.map(renderCaseCard).join("") : `<div class="empty">ยังไม่มี Lead</div>`}</div>
+  `;
+}
+
+function renderLeadForm() {
+  const defaultSale = role() === "sale" ? currentUserId() : "";
+
+  const saleOptions = state.profiles
+    .filter(p => p.role === "sale" && p.is_active)
+    .map(p => `<option value="${attr(p.id)}" ${p.id === defaultSale ? "selected" : ""}>${escapeHTML(profileName(p))}</option>`)
+    .join("");
+
+  return `
+    <section class="panel hidden" data-section="create-lead" style="margin-bottom:16px">
+      <div class="panel-header"><h3 class="panel-title">สร้าง Lead ใหม่</h3></div>
+      <div class="panel-body">
+        <form class="form" data-action="create-lead">
+          <div class="form-row">
+            <div class="field">
+              <label>ชื่อบริษัท / หน่วยงาน *</label>
+              <input name="company_name" required />
+            </div>
+            <div class="field">
+              <label>ชื่อผู้ติดต่อ</label>
+              <input name="contact_name" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>อีเมล</label>
+              <input name="contact_email" type="email" />
+            </div>
+            <div class="field">
+              <label>เบอร์โทร</label>
+              <input name="contact_phone" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>แหล่งที่มา</label>
+              <input name="source_channel" placeholder="เช่น Facebook, Website, Referral" />
+            </div>
+            <div class="field">
+              <label>Sale Owner *</label>
+              <select name="owner_sale_id" required>
+                <option value="">เลือก Sale</option>
+                ${saleOptions}
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>สินค้าที่สนใจ</label>
+              <input name="interested_product" />
+            </div>
+            <div class="field">
+              <label>ระดับความสนใจ</label>
+              <select name="interest_level">
+                <option value="">ไม่ระบุ</option>
+                <option value="low">ต่ำ</option>
+                <option value="medium">กลาง</option>
+                <option value="high">สูง</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>รายละเอียด / เงื่อนไขเบื้องต้น</label>
+            <textarea name="qualification_notes"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>วันที่ต้องติดตามต่อ</label>
+              <input name="next_follow_up_at" type="date" value="${attr(daysFromNowISO(3))}" />
+            </div>
+            <div class="field">
+              <label>ทีมที่สร้าง</label>
+              <select name="source_team">
+                <option value="mkt">MKT</option>
+                <option value="sale" ${role() === "sale" ? "selected" : ""}>Sale</option>
+              </select>
+            </div>
+          </div>
+          <input type="hidden" name="default_sale_id" value="${attr(defaultSale)}" />
+          <div class="actions">
+            <button class="btn primary" type="submit">บันทึก Lead</button>
+            <button class="btn ghost" type="button" data-action="toggle-create-lead">ยกเลิก</button>
+          </div>
+        </form>
       </div>
-      <div class="actions">
-        ${hasRole([ROLES.ADMIN, ROLES.MKT]) ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ สร้าง MKT Lead</button>` : ''}
-        ${hasRole([ROLES.ADMIN, ROLES.SALE]) ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ Sale สร้าง Lead</button>` : ''}
+    </section>
+  `;
+}
+
+function renderLeadFilters() {
+  const filters = [["active", "Lead เปิดอยู่"], ["lost", "Lost"], ["all", "ทั้งหมด"]];
+  return `
+    <div class="toolbar">
+      <div class="filters">
+        ${filters.map(([key, label]) => `<button class="filter-chip ${state.filters.leads === key ? "active" : ""}" data-filter-group="leads" data-filter-value="${attr(key)}" type="button">${escapeHTML(label)}</button>`).join("")}
       </div>
     </div>
+  `;
+}
 
-    <div class="tabs lead-tabs" role="tablist" aria-label="Lead journey filters">
-      ${tabs.map(([stage, label]) => `
-        <button class="tab ${String(filter.stage || '') === String(stage) ? 'active' : ''}" type="button" data-lead-tab="${escapeAttr(stage)}">
-          ${escapeHTML(label)}
-        </button>
-      `).join('')}
-    </div>
-
-    <div class="card">
-      <div class="page-header compact-header">
+function renderCaseCard(item) {
+  return `
+    <article class="case-card">
+      <div class="case-head">
         <div>
-          <h3>Lead Journey List</h3>
-          <p>แสดงตามสิทธิ์ของผู้ใช้และ filter ปัจจุบัน</p>
+          <h3 class="case-title">${escapeHTML(caseNo(item))} ${escapeHTML(caseTitle(item))}</h3>
+          <div class="case-meta">
+            ${stageBadge(item.stage)}
+            ${item.interest_level ? badge(`Interest: ${item.interest_level}`, "muted") : ""}
+            <span>Sale: ${escapeHTML(profileName(item.owner_sale))}</span>
+            <span>Follow-up: ${escapeHTML(fmtDate(item.next_follow_up_at))}</span>
+          </div>
         </div>
-        ${renderViewSwitcher('leads')}
+        <button class="btn ghost" data-action="open-case" data-id="${attr(item.id)}" type="button">ดูประวัติ</button>
       </div>
-      ${renderAccountsCollection(leadJourneys, 'leads')}
+      <div class="case-note">${escapeHTML(item.qualification_notes || item.current_need || "ยังไม่มี note")}</div>
+      ${renderCaseActions(item)}
+    </article>
+  `;
+}
+
+function renderCaseActions(item) {
+  const actions = [];
+
+  if (item.stage === "lead" && (can(["admin"]) || item.owner_sale_id === currentUserId())) {
+    actions.push(`<button class="btn warning" data-action="send-demo" data-id="${attr(item.id)}" type="button">ส่งเข้า Demo</button>`);
+    actions.push(`<button class="btn success" data-action="convert-customer" data-id="${attr(item.id)}" type="button">เป็น Customer</button>`);
+    actions.push(`<button class="btn danger" data-action="close-lost" data-id="${attr(item.id)}" type="button">ปิด Lost</button>`);
+  }
+
+  if (item.stage === "demo" && can(["admin", "cs"])) {
+    actions.push(`<button class="btn success" data-action="convert-customer" data-id="${attr(item.id)}" type="button">Demo จบ: เป็น Customer</button>`);
+    actions.push(`<button class="btn danger" data-action="close-lost" data-id="${attr(item.id)}" type="button">Demo จบ: Lost</button>`);
+  }
+
+  if (item.stage === "customer" && can(["admin", "cs"])) {
+    actions.push(`<button class="btn danger" data-action="mark-churn" data-id="${attr(item.id)}" type="button">Mark Churn</button>`);
+  }
+
+  if (item.stage !== "archived" && can(["admin", "mkt", "sale", "cs"])) {
+    actions.push(`<button class="btn ghost" data-action="create-task-for-case" data-id="${attr(item.id)}" type="button">+ Task</button>`);
+  }
+
+  return actions.length ? `<div class="actions">${actions.join("")}</div>` : "";
+}
+
+function renderDemos() {
+  const items = state.demos.filter(demo => {
+    if (state.filters.demos === "history") return ["completed", "cancelled", "lost", "converted"].includes(demo.demo_status);
+    if (state.filters.demos === "all") return true;
+    return ["queued", "scheduled", "in_progress"].includes(demo.demo_status);
+  });
+
+  const filters = [["active", "กำลังดำเนินการ"], ["history", "ประวัติ"], ["all", "ทั้งหมด"]];
+
+  return `
+    ${pageHeader("Demo Queue", "CS เห็นรายการ Demo ร่วมกันทั้งทีม และประวัติ Demo ไม่หายหลังเปลี่ยนสถานะ")}
+    <div class="toolbar">
+      <div class="filters">
+        ${filters.map(([key, label]) => `<button class="filter-chip ${state.filters.demos === key ? "active" : ""}" data-filter-group="demos" data-filter-value="${attr(key)}" type="button">${escapeHTML(label)}</button>`).join("")}
+      </div>
     </div>
-  `
+    <div class="list">${items.length ? items.map(renderDemoCard).join("") : `<div class="empty">ยังไม่มีรายการ Demo</div>`}</div>
+  `;
 }
 
-
-function renderLeadCreatePanel() {
-  const canCreateMkt = hasRole([ROLES.ADMIN, ROLES.MKT])
-  const canCreateSale = hasRole([ROLES.ADMIN, ROLES.SALE])
-  if (!canCreateMkt && !canCreateSale) return ''
+function renderDemoCard(demo) {
+  const item = demo.crm_cases;
+  if (!item) return "";
+  const canEditDemo = can(["admin", "cs"]);
 
   return `
-    <div class="actions lead-create-actions">
-      ${canCreateMkt ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ สร้าง MKT Lead</button>` : ''}
-      ${canCreateSale ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ Sale สร้าง Lead</button>` : ''}
-    </div>
-  `
-}
-
-
-function renderMktLeadForm() {
-  const today = todayISO()
-  const salesPreview = activeSalesNames()
-  return `
-    <form class="form-grid modal-form" data-form="create-mkt-lead" novalidate>
-      <div class="form-section full">
-        <h3>ข้อมูลจาก Marketing</h3>
-        <p class="card-subtitle">ระบบจะออกลำดับ MKT และ assign Sale แบบ round-robin หลัง บันทึก</p>
+    <article class="case-card">
+      <div class="case-head">
+        <div>
+          <h3 class="case-title">${escapeHTML(caseNo(item))} ${escapeHTML(caseTitle(item))}</h3>
+          <div class="case-meta">
+            ${badge(DEMO_STATUS_LABELS[demo.demo_status] || demo.demo_status, demo.demo_status === "converted" ? "success" : "warning")}
+            ${stageBadge(item.stage)}
+            <span>เริ่ม: ${escapeHTML(fmtDate(demo.start_date))}</span>
+            <span>สิ้นสุด: ${escapeHTML(fmtDate(demo.end_date))}</span>
+            <span>CS: ${escapeHTML(profileName(demo.assigned_cs))}</span>
+          </div>
+        </div>
+        <button class="btn ghost" data-action="open-case" data-id="${attr(item.id)}" type="button">ดูประวัติ</button>
       </div>
-      ${readonlyDisplay('running_no_preview', 'ลำดับ MKT', 'ระบบจะออกเลขอัตโนมัติ')}
-      ${readonlyDisplay('source_type_preview', 'ที่มา Lead', 'Marketing')}
-      ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', true)}
-      ${selectField('campaign_id', 'แคมเปญ', state.cache.campaigns, 'id', 'name', false)}
-      ${readonlyDisplay('created_at_preview', 'วันที่บันทึก', today)}
-      ${inputField('contact_name', 'ผู้ติดต่อ', 'text', false)}
-      ${inputField('phone', 'เบอร์หลัก', 'text', false)}
-      ${inputField('email', 'อีเมล', 'email', false)}
-      ${inputField('company_name', 'ชื่อบริษัท', 'text', false)}
-      ${multiSelectField('module_ids', 'สินค้า / สินค้า', state.cache.modules, 'id', 'module_name')}
-      ${inputField('cars_estimate', 'จำนวนรถโดยประมาณ', 'number', false)}
-      ${readonlyDisplay('sale_assignment_preview', 'เซลล์ที่ระบบจะ assign', salesPreview || 'จะแสดงหลัง บันทึก')}
-      <div class="field full" data-field="initial_note">
-        <label for="mkt-initial-note">ข้อมูล Lead</label>
-        <textarea id="mkt-initial-note" name="initial_note" placeholder="รายละเอียด Lead จาก Marketing"></textarea>
-        <div class="field-error" data-field-error="initial_note"></div>
+      <div class="case-note">${escapeHTML(demo.requirements || demo.notes || "ยังไม่มีรายละเอียด Demo")}</div>
+      <div class="actions">
+        ${canEditDemo ? `<button class="btn ghost" data-action="edit-demo" data-id="${attr(demo.id)}" type="button">อัปเดต Demo</button>` : ""}
+        ${canEditDemo && item.stage === "demo" ? `<button class="btn success" data-action="convert-customer" data-id="${attr(item.id)}" type="button">เป็น Customer</button>` : ""}
+        ${canEditDemo && item.stage === "demo" ? `<button class="btn danger" data-action="close-lost" data-id="${attr(item.id)}" type="button">ปิด Lost</button>` : ""}
       </div>
-      <div class="full modal-actions">
-        <button class="btn" type="button" data-close-modal>ยกเลิก</button>
-        <button class="btn primary" type="submit">บันทึก</button>
-      </div>
-    </form>
-  `
-}
-
-
-function renderSaleLeadForm() {
-  return `
-    <form class="form-grid modal-form" data-form="create-sales-lead" novalidate>
-      <div class="form-section full">
-        <h3>ข้อมูลที่ Sale สร้างเอง</h3>
-        <p class="card-subtitle">Lead นี้ไม่มีลำดับ MKT และ owner คือ Sale ที่ login อยู่</p>
-      </div>
-      ${inputField('company_name', 'บริษัท', 'text', false)}
-      ${inputField('contact_name', 'ผู้ติดต่อ', 'text', false)}
-      ${inputField('position', 'ตำแหน่ง', 'text', false)}
-      ${inputField('phone', 'เบอร์หลัก', 'text', false)}
-      ${inputField('phone_2', 'เบอร์ 2', 'text', false)}
-      ${inputField('phone_3', 'เบอร์ 3', 'text', false)}
-      ${inputField('email', 'อีเมล', 'email', false)}
-      ${inputField('email_2', 'อีเมล 2', 'email', false)}
-      ${inputField('tax_id', 'เลขผู้เสียภาษี', 'text', false)}
-      <div class="field full" data-field="address">
-        <label for="sale-address">ที่อยู่</label>
-        <textarea id="sale-address" name="address"></textarea>
-        <div class="field-error" data-field-error="address"></div>
-      </div>
-      ${selectField('business_type_id', 'ธุรกิจ', state.cache.businessTypes, 'id', 'name', false)}
-      <div class="field full" data-field="initial_note">
-        <label for="sale-initial-note">รายละเอียด</label>
-        <textarea id="sale-initial-note" name="initial_note"></textarea>
-        <div class="field-error" data-field-error="initial_note"></div>
-      </div>
-      ${inputField('cars_estimate', 'จำนวนรถ', 'number', false, '0')}
-      ${multiSelectField('module_ids', 'สินค้า / สินค้า', state.cache.modules, 'id', 'module_name')}
-      ${inputField('current_gps_provider', 'GPS ปัจจุบัน', 'text', false)}
-      <div class="field full" data-field="note">
-        <label for="sale-note">หมายเหตุ</label>
-        <textarea id="sale-note" name="note"></textarea>
-        <div class="field-error" data-field-error="note"></div>
-      </div>
-      ${readonlyDisplay('sale_email_preview', 'อีเมลเซลล์', state.profile?.email || state.user?.email || '-')}
-      ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', true)}
-      <div class="full modal-actions">
-        <button class="btn" type="button" data-close-modal>ยกเลิก</button>
-        <button class="btn primary" type="submit">บันทึก</button>
-      </div>
-    </form>
-  `
-}
-
-function renderAccounts() {
-  const accounts = state.cache.accounts
-  return `
-    <div class="page-header">
-      <div>
-        <h2>บัญชีs</h2>
-        <p>ข้อมูลกลางของ Lead / Demo / Customer / Lost</p>
-      </div>
-      ${renderViewSwitcher('accounts')}
-    </div>
-    ${renderAccountsCollection(accounts, 'accounts')}
-  `
-}
-
-function renderDemo() {
-  const demoAccounts = state.cache.accounts.filter((a) => a.lifecycle_stage === 'demo')
-  return `
-    <div class="page-header">
-      <div>
-        <h2>Demo Queue</h2>
-        <p>CS เห็น Demo ร่วมกันทั้งทีม และสามารถเลือก CS owner ได้มากกว่า 1 คน</p>
-      </div>
-      ${renderViewSwitcher('demo')}
-    </div>
-    ${renderAccountsCollection(demoAccounts, 'demo')}
-  `
+    </article>
+  `;
 }
 
 function renderCustomers() {
-  const customers = state.cache.accounts.filter((a) => a.lifecycle_stage === 'customer')
+  const items = state.customers.filter(customer => {
+    const stage = customer.crm_cases?.stage;
+    if (state.filters.customers === "churn") return stage === "churn";
+    if (state.filters.customers === "all") return true;
+    return stage === "customer";
+  });
+
+  const filters = [["active", "ลูกค้าปัจจุบัน"], ["churn", "Churn"], ["all", "ทั้งหมด"]];
   return `
-    <div class="page-header">
-      <div>
-        <h2>Customers</h2>
-        <p>ข้อมูลลูกค้า จำนวนรถ Module รอบบิล ระดับการใช้งาน และ Task</p>
+    ${pageHeader("Customer", "CS ดูแลข้อมูลลูกค้า Training Usage Billing Risk และสถานะลูกค้า")}
+    <div class="toolbar">
+      <div class="filters">
+        ${filters.map(([key, label]) => `<button class="filter-chip ${state.filters.customers === key ? "active" : ""}" data-filter-group="customers" data-filter-value="${attr(key)}" type="button">${escapeHTML(label)}</button>`).join("")}
       </div>
-      ${renderViewSwitcher('customers')}
     </div>
-    ${renderAccountsCollection(customers, 'customers')}
-  `
+    <div class="list">${items.length ? items.map(renderCustomerCard).join("") : `<div class="empty">ยังไม่มี Customer</div>`}</div>
+  `;
+}
+
+function renderCustomerCard(customer) {
+  const item = customer.crm_cases;
+  if (!item) return "";
+  const canEdit = can(["admin", "cs"]);
+
+  return `
+    <article class="case-card">
+      <div class="case-head">
+        <div>
+          <h3 class="case-title">${escapeHTML(caseNo(item))} ${escapeHTML(caseTitle(item))}</h3>
+          <div class="case-meta">
+            ${stageBadge(item.stage)}
+            ${riskBadge(customer.risk_level)}
+            <span>Plan: ${escapeHTML(customer.plan_name || "-")}</span>
+            <span>Billing: ${escapeHTML(customer.billing_cycle || "-")}</span>
+            <span>Renewal: ${escapeHTML(fmtDate(customer.renewal_date))}</span>
+          </div>
+        </div>
+        <button class="btn ghost" data-action="open-case" data-id="${attr(item.id)}" type="button">ดูประวัติ</button>
+      </div>
+      <div class="case-note">Health: ${escapeHTML(customer.health_status || "-")} / Usage: ${escapeHTML(customer.usage_status || "-")} / Training: ${escapeHTML(customer.training_status || "-")}</div>
+      <div class="actions">
+        ${canEdit ? `<button class="btn ghost" data-action="edit-customer" data-id="${attr(customer.id)}" type="button">อัปเดต Customer</button>` : ""}
+        ${canEdit && item.stage === "customer" ? `<button class="btn danger" data-action="mark-churn" data-id="${attr(item.id)}" type="button">Mark Churn</button>` : ""}
+        ${can(["admin", "mkt", "sale", "cs"]) ? `<button class="btn ghost" data-action="create-task-for-case" data-id="${attr(item.id)}" type="button">+ Task</button>` : ""}
+      </div>
+    </article>
+  `;
 }
 
 function renderTasks() {
-  const tasks = state.cache.tasks
+  const items = state.tasks.filter(task => {
+    if (state.filters.tasks === "all") return true;
+    return task.status === state.filters.tasks;
+  });
+
+  const filters = [["open", "เปิดอยู่"], ["done", "เสร็จแล้ว"], ["cancelled", "ยกเลิก"], ["all", "ทั้งหมด"]];
+
   return `
-    <div class="page-header">
-      <div>
-        <h2>Tasks</h2>
-        <p>มุมมองงานติดตามลูกค้า รองรับ Board, Calendar, Table และ Timeline</p>
+    ${pageHeader("Task", "งาน follow-up, demo, training, billing และ risk ที่ต้องมี owner/due date", can(["admin", "mkt", "sale", "cs"]) ? `<button class="btn primary" data-action="create-task" type="button">+ สร้าง Task</button>` : "")}
+    <section class="panel hidden" data-section="create-task" style="margin-bottom:16px">
+      <div class="panel-header"><h3 class="panel-title">สร้าง Task</h3></div>
+      <div class="panel-body">${renderTaskForm()}</div>
+    </section>
+    <div class="toolbar">
+      <div class="filters">
+        ${filters.map(([key, label]) => `<button class="filter-chip ${state.filters.tasks === key ? "active" : ""}" data-filter-group="tasks" data-filter-value="${attr(key)}" type="button">${escapeHTML(label)}</button>`).join("")}
       </div>
-      ${renderViewSwitcher('tasks')}
     </div>
-    <div class="card">
-      ${renderTaskCollection(tasks, 'tasks')}
-    </div>
-  `
+    <div class="list">${items.length ? items.map(renderTaskCard).join("") : `<div class="empty">ยังไม่มี Task</div>`}</div>
+  `;
 }
 
-function renderTraining() {
-  const trainings = state.cache.trainings
-  return `
-    <div class="page-header">
-      <div>
-        <h2>Training Sessions</h2>
-        <p>บันทึกการสอนใช้งานทั้งช่วง Demo และ Customer พร้อมครั้งที่และรายละเอียด</p>
-      </div>
-      ${renderViewSwitcher('training')}
-    </div>
-    <div class="card">
-      ${renderTrainingCollection(trainings, 'training')}
-    </div>
-  `
-}
+function renderTaskForm(caseId = "") {
+  const caseOptions = state.cases
+    .filter(item => !["archived"].includes(item.stage))
+    .map(item => `<option value="${attr(item.id)}" ${caseId === item.id ? "selected" : ""}>${escapeHTML(caseNo(item))} ${escapeHTML(caseTitle(item))}</option>`)
+    .join("");
 
-function renderReports() {
-  const accounts = state.cache.accounts
-  const leadSources = state.cache.leadSources.map((source) => {
-    const count = accounts.filter((a) => a.lead_source_id === source.id).length
-    return [source.name, count]
-  })
-
-  const sales = state.cache.profiles.filter((p) => p.role === ROLES.SALE).map((sale) => {
-    const owned = accounts.filter((a) => a.sale_owner_id === sale.id)
-    const won = owned.filter((a) => a.lifecycle_stage === 'customer').length
-    const lost = owned.filter((a) => a.lifecycle_stage === 'lost').length
-    return [displayUser(sale.id), owned.length, won, lost]
-  })
+  const userOptions = state.profiles
+    .filter(p => p.is_active)
+    .map(p => `<option value="${attr(p.id)}" ${currentUserId() === p.id ? "selected" : ""}>${escapeHTML(profileName(p))} (${escapeHTML(ROLE_LABELS[p.role] || p.role)})</option>`)
+    .join("");
 
   return `
-    <div class="page-header">
-      <div>
-        <h2>Reports</h2>
-        <p>รายงานภาพรวมสำหรับ Manager/Admin</p>
+    <form class="form" data-action="save-task">
+      <div class="form-row">
+        <div class="field">
+          <label>Case *</label>
+          <select name="case_id" required>
+            <option value="">เลือก Case</option>
+            ${caseOptions}
+          </select>
+        </div>
+        <div class="field">
+          <label>ผู้รับผิดชอบ *</label>
+          <select name="assigned_to" required>${userOptions}</select>
+        </div>
       </div>
-      <div class="actions"><button class="btn" type="button" data-action="print">พิมพ์</button></div>
-    </div>
-    <div class="grid grid-2">
-      <div class="card">
-        <h3>Lead by ประเภท</h3>
-        ${simpleRowsTable(['ประเภท', 'Count'], leadSources)}
+      <div class="form-row">
+        <div class="field">
+          <label>หัวข้อ *</label>
+          <input name="title" required />
+        </div>
+        <div class="field">
+          <label>ประเภทงาน</label>
+          <select name="task_type">
+            <option value="follow_up">Follow-up</option>
+            <option value="demo">Demo</option>
+            <option value="training">Training</option>
+            <option value="billing">Billing</option>
+            <option value="risk">Risk</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
       </div>
-      <div class="card">
-        <h3>Sale Performance</h3>
-        ${simpleRowsTable(['Sale', 'บัญชี', 'Won', 'Lost'], sales)}
+      <div class="form-row">
+        <div class="field">
+          <label>Due date</label>
+          <input name="due_date" type="date" value="${attr(daysFromNowISO(2))}" />
+        </div>
+        <div class="field">
+          <label>Priority</label>
+          <select name="priority">
+            <option value="normal">ปกติ</option>
+            <option value="high">สูง</option>
+            <option value="low">ต่ำ</option>
+          </select>
+        </div>
       </div>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <h3>Lifecycle Detail</h3>
-      ${renderMiniJourney()}
-    </div>
-  `
-}
-
-function renderAdmin() {
-  return `
-    <div class="page-header">
-      <div>
-        <h2>Admin Settings</h2>
-        <p>จัดการ role, active status, master list และข้อมูลตั้งต้นของระบบ</p>
-      </div>
-    </div>
-    <div class="grid">
-      ${renderProfilesAdmin()}
-      ${MASTER_TABLES.map(renderMasterAdmin).join('')}
-    </div>
-  `
-}
-
-function renderProfilesAdmin() {
-  const rows = state.cache.profiles.map((profile) => `
-    <tr>
-      <td>${escapeHTML(profile.email || '')}</td>
-      <td>
-        <input value="${escapeAttr(profile.display_name || '')}" data-profile-field="display_name" data-profile-id="${profile.id}">
-      </td>
-      <td>
-        <select data-profile-field="role" data-profile-id="${profile.id}">
-          ${['pending', 'admin', 'mkt', 'sale', 'cs', 'manager'].map((role) => `<option value="${role}" ${profile.role === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
-        </select>
-      </td>
-      <td>
-        <select data-profile-field="is_active" data-profile-id="${profile.id}">
-          <option value="true" ${profile.is_active ? 'selected' : ''}>ใช้งาน</option>
-          <option value="false" ${!profile.is_active ? 'selected' : ''}>ปิดใช้งาน</option>
-        </select>
-      </td>
-      <td><button class="btn small primary" type="button" data-action="save-profile" data-id="${profile.id}">บันทึก</button></td>
-    </tr>
-  `).join('')
-
-  return `
-    <div class="card">
-      <h3>ผู้ใช้ / สิทธิ์</h3>
-      <p class="card-subtitle">User ต้องถูกสร้างใน Supabase Auth ก่อน แล้ว Admin มากำหนด role/is_active ที่นี่</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>อีเมล</th><th>ชื่อแสดงผล</th><th>สิทธิ์</th><th>สถานะ</th><th></th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5" class="empty">ยังไม่มีผู้ใช้</td></tr>'}</tbody>
-        </table>
-      </div>
-    </div>
-  `
-}
-
-
-function renderMasterAdmin(config) {
-  const rows = (state.cache[config.key] || []).map((row) => `
-    <tr>
-      <td>${escapeHTML(row[config.nameField] || '')}</td>
-      <td>${row.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}</td>
-      <td>
-        <button class="btn small" type="button" data-action="toggle-master" data-table="${config.table}" data-id="${row.id}" data-active="${row.is_active ? 'false' : 'true'}">
-          ${row.is_active ? 'ปิดใช้' : 'เปิดใช้'}
-        </button>
-      </td>
-    </tr>
-  `).join('')
-
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>${escapeHTML(config.label)}</h3>
-        <button class="btn small primary" type="button" data-open-modal="create-master" data-table="${escapeAttr(config.table)}" data-name-field="${escapeAttr(config.nameField)}" data-label="${escapeAttr(config.label)}">+ เพิ่ม</button>
-      </div>
-      <div class="table-wrap" style="margin-top:12px">
-        <table>
-          <thead><tr><th>ชื่อ</th><th>สถานะ</th><th></th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="3" class="empty">ยังไม่มี master data</td></tr>'}</tbody>
-        </table>
-      </div>
-    </div>
-  `
-}
-
-function renderAccountDetail(accountId) {
-  const account = state.cache.accounts.find((item) => item.id === accountId)
-  if (!account) {
-    return renderNotFound()
-  }
-
-  const activeTab = state.accountTabs[accountId] || 'overview'
-  const tabs = [
-    ['overview', 'ภาพรวม'],
-    ['demo', 'เดโม'],
-    ['training', 'อบรม'],
-    ['customer', 'Customer'],
-    ['tasks', 'งานติดตาม'],
-    ['history', 'History']
-  ]
-
-  const contentByTab = {
-    overview: `${renderAccountOverviewCard(account)}${renderContactsCard(account)}${renderActivitiesCard(account)}`,
-    demo: renderDemoCard(account),
-    training: renderTrainingCard(account),
-    customer: renderCustomerCard(account),
-    tasks: renderTasksCard(account),
-    history: `${renderHistoryCard(account)}${renderActivitiesCard(account)}`
-  }
-
-  return `
-    <div class="page-header">
-      <div>
-        <h2>${escapeHTML(accountTitle(account))}</h2>
-        <p>${renderRunningNo(account)} ${badge(account.lifecycle_stage)} ${badge(account.lifecycle_status || '-')}</p>
+      <div class="field">
+        <label>Note</label>
+        <textarea name="notes"></textarea>
       </div>
       <div class="actions">
-        <button class="btn" type="button" data-nav="accounts">กลับ</button>
-        <button class="btn" type="button" data-action="print">พิมพ์</button>
-      </div>
-    </div>
-
-    <div class="tabs account-tabs" role="tablist" aria-label="บัญชี sections">
-      ${tabs.map(([key, label]) => `
-        <button class="tab ${activeTab === key ? 'active' : ''}" type="button" role="tab" aria-selected="${activeTab === key ? 'true' : 'false'}" data-account-tab="${key}" data-account-id="${account.id}">
-          ${escapeHTML(label)}
-        </button>
-      `).join('')}
-    </div>
-
-    <div class="detail-layout">
-      <div class="stack">
-        ${contentByTab[activeTab] || contentByTab.overview}
-      </div>
-      <aside class="stack sticky-side">
-        ${renderAccountActions(account)}
-        ${renderAccountMeta(account)}
-        ${activeTab !== 'history' ? renderHistoryCard(account) : ''}
-      </aside>
-    </div>
-  `
-}
-
-function renderAccountOverviewCard(account) {
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>บัญชี Overview</h3>
-        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="account-overview" data-account-id="${account.id}">แก้ไขข้อมูล</button>` : ''}
-      </div>
-      <div class="meta-grid detail-meta">
-        <div class="meta-label">ชื่อบริษัท</div><div>${escapeHTML(account.company_name || '-')}</div>
-        <div class="meta-label">ชื่อย่อ</div><div>${escapeHTML(account.short_name || '-')}</div>
-        <div class="meta-label">เลขผู้เสียภาษี</div><div>${escapeHTML(account.tax_id || '-')}</div>
-        <div class="meta-label">จำนวนรถ</div><div>${escapeHTML(String(account.cars_estimate || '-'))}</div>
-        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterName('leadChannels', account.lead_channel_id))}</div>
-        <div class="meta-label">แหล่งที่มา</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
-        <div class="meta-label">แคมเปญ</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
-        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterName('businessTypes', account.business_type_id))}</div>
-        <div class="meta-label">GPS ปัจจุบัน</div><div>${escapeHTML(account.current_gps_provider || '-')}</div>
-        <div class="meta-label">ที่อยู่</div><div>${escapeHTML(account.address || '-')}</div>
-        <div class="meta-label">สถานะการติดต่อ</div><div>${escapeHTML(masterName('contactStatuses', account.contact_status_id))}</div>
-        <div class="meta-label">สินค้า</div><div>${escapeHTML(accountModuleNames(account.id).join(', ') || '-')}</div>
-        <div class="meta-label">รายละเอียด</div><div>${escapeHTML(account.product_interest || account.initial_note || '-')}</div>
-      </div>
-    </div>
-  `
-}
-
-function renderAccountOverviewForm(account) {
-  const disabled = isReadOnly() ? 'disabled' : ''
-  return `
-    <form class="card" data-form="account-overview" data-account-id="${account.id}">
-      <h3>บัญชี Overview</h3>
-      <div class="form-grid">
-        ${inputField('company_name', 'ชื่อบริษัท', 'text', false, account.company_name || '', disabled)}
-        ${inputField('short_name', 'ชื่อย่อ', 'text', false, account.short_name || '', disabled)}
-        ${inputField('tax_id', 'เลขผู้เสียภาษี', 'text', false, account.tax_id || '', disabled)}
-        ${inputField('cars_estimate', 'จำนวนรถ', 'number', false, account.cars_estimate || '', disabled)}
-        ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', false, account.lead_channel_id || '', disabled)}
-        ${selectField('lead_source_id', 'แหล่งที่มา Lead', state.cache.leadSources, 'id', 'name', false, account.lead_source_id || '', disabled)}
-        ${selectField('campaign_id', 'แคมเปญ', state.cache.campaigns, 'id', 'name', false, account.campaign_id || '', disabled)}
-        ${selectField('business_type_id', 'ธุรกิจ', state.cache.businessTypes, 'id', 'name', false, account.business_type_id || '', disabled)}
-        ${selectField('contact_status_id', 'สถานะการติดต่อ', state.cache.contactStatuses, 'id', 'name', false, account.contact_status_id || '', disabled)}
-        ${inputField('current_gps_provider', 'GPS ปัจจุบัน', 'text', false, account.current_gps_provider || '', disabled)}
-        <div class="field full" data-field="address">
-          <label>ที่อยู่</label>
-          <textarea name="address" ${disabled}>${escapeHTML(account.address || '')}</textarea>
-          <div class="field-error" data-field-error="address"></div>
-        </div>
-        ${multiSelectField('module_ids', 'สินค้า', state.cache.modules, 'id', 'module_name', accountModuleIds(account.id), disabled)}
-        <div class="field full">
-          <label>รายละเอียด / รายละเอียดความสนใจ</label>
-          <textarea name="product_interest" ${disabled}>${escapeHTML(account.product_interest || account.initial_note || '')}</textarea>
-        </div>
-        <div class="full actions">
-          <button class="btn primary" type="submit" ${disabled}>บันทึก Overview</button>
-        </div>
+        <button class="btn primary" type="submit">บันทึก Task</button>
+        <button class="btn ghost" type="button" data-action="create-task">ยกเลิก</button>
       </div>
     </form>
-  `
+  `;
 }
 
-
-function renderContactsCard(account) {
-  const contacts = state.cache.contacts.filter((c) => c.account_id === account.id)
-  const rows = contacts.map((c) => `
-    <tr>
-      <td>${escapeHTML(c.contact_name || '-')}</td>
-      <td>${escapeHTML(c.position || '-')}</td>
-      <td>${escapeHTML([c.phone, c.phone_2, c.phone_3].filter(Boolean).join(', ') || '-')}</td>
-      <td>${escapeHTML([c.email, c.email_2].filter(Boolean).join(', ') || '-')}</td>
-      <td>${escapeHTML(c.contact_role || '-')}</td>
-    </tr>
-  `).join('')
-
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>ผู้ติดต่อ</h3>
-        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-contact" data-account-id="${account.id}">+ เพิ่ม Contact</button>` : ''}
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>ชื่อ</th><th>ตำแหน่ง</th><th>เบอร์</th><th>อีเมล</th><th>สิทธิ์</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5" class="empty">ยังไม่มีผู้ติดต่อ</td></tr>'}</tbody>
-        </table>
-      </div>
-    </div>
-  `
+function canUpdateTask(task) {
+  if (role() === "manager") return false;
+  return task.assigned_to === currentUserId() || task.created_by === currentUserId() || can(["admin", "cs"]);
 }
 
-
-function renderActivitiesCard(account) {
-  const activities = state.cache.activities
-    .filter((a) => a.account_id === account.id)
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-
-  const items = activities.map((activity) => `
-    <div class="list-item">
-      <div class="list-title">
-        <span>${escapeHTML(activity.title || activity.activity_type || 'หมายเหตุ')}</span>
-        <span class="muted">${formatDateTime(activity.created_at)}</span>
-      </div>
-      <div class="list-meta">${escapeHTML(activity.content || '')}</div>
-      ${activity.next_follow_up_at ? `<div>${badge('ติดตามต่อ: ' + formatDateTime(activity.next_follow_up_at))}</div>` : ''}
-    </div>
-  `).join('')
+function renderTaskCard(task) {
+  const item = task.crm_cases;
+  const dueType = task.status === "done" ? "success" : task.due_date && task.due_date < todayISO() ? "danger" : "muted";
+  const taskCanUpdate = canUpdateTask(task);
 
   return `
-    <div class="card">
-      <div class="section-head">
-        <h3>Activities / หมายเหตุs</h3>
-        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-activity" data-account-id="${account.id}">+ เพิ่ม บันทึก</button>` : ''}
-      </div>
-      <div class="list-view">${items || emptyState('ยังไม่มี activity', 'เพิ่ม note, call log หรือ follow-up เพื่อเก็บประวัติของ account นี้')}</div>
-    </div>
-  `
-}
-
-
-function renderDemoCard(account) {
-  const demos = state.cache.demos.filter((d) => d.account_id === account.id)
-  const demoRows = demos.map((demo) => `
-    <tr>
-      <td>${badge(demo.demo_status || '-')}</td>
-      <td>${formatDate(demo.start_date)}</td>
-      <td>${formatDate(demo.end_date)}</td>
-      <td>${escapeHTML(demo.demo_result || '-')}</td>
-      <td><button class="btn small" type="button" data-open-modal="edit-demo" data-demo-id="${demo.id}">Edit</button></td>
-    </tr>
-  `).join('')
-
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>Demo</h3>
-        ${!isReadOnly() && account.lifecycle_stage !== 'lost' ? `<button class="btn small primary" type="button" data-open-modal="request-demo" data-account-id="${account.id}">+ ขอเดโม</button>` : ''}
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>สถานะ</th><th>Start</th><th>End</th><th>ผลลัพธ์</th><th></th></tr></thead>
-          <tbody>${demoRows || '<tr><td colspan="5" class="empty">ยังไม่มี Demo</td></tr>'}</tbody>
-        </table>
-      </div>
-      ${demos.map(renderDemoDetail).join('')}
-    </div>
-  `
-}
-
-
-function renderDemoDetail(demo) {
-  const users = state.cache.demoUsers.filter((u) => u.demo_session_id === demo.id)
-  const logs = state.cache.demoLogs.filter((l) => l.demo_session_id === demo.id).slice(0, 6)
-
-  return `
-    <div class="card compact subcard">
-      <div class="section-head">
-        <h3>Demo Detail: ${formatDate(demo.start_date)} - ${formatDate(demo.end_date)}</h3>
-        <div class="actions">
-          ${!isReadOnly() ? `<button class="btn small" type="button" data-open-modal="edit-demo" data-demo-id="${demo.id}">แก้ไขเดโม</button>` : ''}
-          ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-demo-user" data-demo-id="${demo.id}" data-account-id="${demo.account_id}">+ Demo User</button>` : ''}
+    <article class="case-card">
+      <div class="case-head">
+        <div>
+          <h3 class="case-title">${escapeHTML(task.title)}</h3>
+          <div class="case-meta">
+            ${badge(TASK_STATUS_LABELS[task.status] || task.status, task.status === "done" ? "success" : task.status === "cancelled" ? "danger" : "primary")}
+            ${badge(`Due: ${fmtDate(task.due_date)}`, dueType)}
+            <span>Owner: ${escapeHTML(profileName(task.assignee))}</span>
+            <span>Case: ${escapeHTML(item ? `${caseNo(item)} ${caseTitle(item)}` : "-")}</span>
+          </div>
         </div>
+        ${item ? `<button class="btn ghost" data-action="open-case" data-id="${attr(item.id)}" type="button">ดู Case</button>` : ""}
       </div>
-      <div class="meta-grid detail-meta">
-        <div class="meta-label">สถานะ</div><div>${badge(demo.demo_status || '-')}</div>
-        <div class="meta-label">ผลการ Demo</div><div>${escapeHTML(demo.demo_result || '-')}</div>
-        <div class="meta-label">ความต้องการ</div><div>${escapeHTML(demo.requirement_note || '-')}</div>
-        <div class="meta-label">ติดตามต่อ</div><div>${escapeHTML(demo.follow_up_note || '-')}</div>
-      </div>
-
-      <h3 style="margin-top:14px">Demo Users</h3>
-      ${simpleRowsTable(['อีเมล', 'ชื่อ', 'รหัสผ่าน'], users.map((u) => [u.user_email || '-', u.user_name || '-', u.demo_password || '-']))}
-
-      <h3 style="margin-top:14px">Demo Logs</h3>
-      <div class="list-view">${logs.map((log) => `<div class="list-item"><div class="list-title">${escapeHTML(log.log_type || 'log')}<span class="muted">${formatDateTime(log.created_at)}</span></div><div class="list-meta">${escapeHTML(log.message || '')}</div></div>`).join('') || '<div class="empty">ยังไม่มี log</div>'}</div>
-    </div>
-  `
-}
-
-function renderRequestDemoForm(account) {
-  if (account.lifecycle_stage === 'lost') return ''
-  const csProfiles = state.cache.profiles.filter((p) => p.role === ROLES.CS && p.is_active)
-  return `
-    <form class="form-grid" style="margin-top:14px" data-form="request-demo" data-account-id="${account.id}">
-      <h3 class="full">Request / Add Demo</h3>
-      ${inputField('start_date', 'วันที่เริ่ม Demo', 'date', true)}
-      ${inputField('end_date', 'วันที่สิ้นสุด Demo', 'date', true)}
-      ${multiSelectField('module_ids', 'Module ที่ Demo', state.cache.modules, 'id', 'module_name')}
-      ${multiSelectField('cs_owner_ids', 'CS ผู้รับผิดชอบs', csProfiles, 'id', 'display_name')}
-      <div class="field full"><label>Demo หมายเหตุ</label><textarea name="requirement_note"></textarea></div>
-      <div class="full actions"><button class="btn primary" type="submit">ขอเดโม</button></div>
-    </form>
-  `
-}
-
-
-function renderTrainingCard(account) {
-  const trainings = state.cache.trainings.filter((t) => t.account_id === account.id)
-  const rows = trainings.map((t) => [
-    `#${t.session_no || '-'}`,
-    t.training_phase || '-',
-    formatDate(t.training_date),
-    displayUser(t.trainer_id),
-    t.status || '-',
-    `<button class="btn small" type="button" data-nav="training">View</button>`
-  ])
-
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>Training</h3>
-        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-training" data-account-id="${account.id}">+ เพิ่ม Training</button>` : ''}
-      </div>
-      ${simpleRowsTable(['ครั้งที่', 'ช่วงงาน', 'วันที่', 'ผู้สอน', 'สถานะ', ''], rows)}
-      ${trainings.map((training) => renderTrainingSessionDetail(account, training)).join('')}
-    </div>
-  `
-}
-
-
-function renderTrainingSessionDetail(account, training) {
-  const participants = state.cache.trainingParticipants.filter((p) => p.training_session_id === training.id)
-  const participantRows = participants.map((p) => [
-    p.participant_type || '-',
-    p.participant_type === 'internal' ? displayUser(p.profile_id) : (p.name_snapshot || contactName(p.contact_id)),
-    p.email_snapshot || contactEmail(p.contact_id) || '-',
-    p.role_note || '-'
-  ])
-
-  return `
-    <div class="card compact subcard">
-      <div class="section-head">
-        <h3>Training #${escapeHTML(training.session_no || '-')} Participants</h3>
-        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-training-participant" data-training-id="${training.id}" data-account-id="${account.id}">+ Participant</button>` : ''}
-      </div>
-      ${simpleRowsTable(['Type', 'ชื่อ', 'อีเมล', 'สิทธิ์/หมายเหตุ'], participantRows)}
-    </div>
-  `
-}
-
-function renderTrainingForm(account) {
-  const demos = state.cache.demos.filter((d) => d.account_id === account.id)
-  const customer = state.cache.customers.find((c) => c.account_id === account.id)
-  return `
-    <form class="form-grid" style="margin-top:14px" data-form="add-training" data-account-id="${account.id}">
-      ${selectStaticField('training_phase', 'ช่วงงาน', ['demo', 'customer'], true, account.lifecycle_stage === 'customer' ? 'customer' : 'demo')}
-      ${inputField('session_no', 'ครั้งที่', 'number', false, '')}
-      ${inputField('training_date', 'วันที่สอน', 'date', true, todayISO())}
-      ${selectField('trainer_id', 'ผู้สอนฝั่งเรา', state.cache.profiles.filter((p) => p.role === ROLES.CS || p.role === ROLES.ADMIN), 'id', 'display_name', false, state.user.id)}
-      ${selectField('demo_session_id', 'Demo Session', demos, 'id', 'start_date', false)}
-      <input type="hidden" name="customer_profile_id" value="${customer?.id || ''}">
-      ${selectStaticField('status', 'สถานะ', ['planned', 'done', 'cancelled'], true, 'planned')}
-      <div class="field full"><label>รายละเอียดที่สอน</label><textarea name="training_detail" required></textarea></div>
-      <div class="field full"><label>ปัญหา/คำถาม</label><textarea name="issue_note"></textarea></div>
-      <div class="field full"><label>Next Action</label><textarea name="next_action"></textarea></div>
-      <div class="full actions"><button class="btn primary" type="submit">เพิ่มอบรม</button></div>
-    </form>
-  `
-}
-
-
-function renderCustomerCard(account) {
-  const customer = state.cache.customers.find((c) => c.account_id === account.id)
-  if (!customer) {
-    return `
-      <div class="card">
-        <div class="section-head">
-          <h3>ข้อมูลลูกค้า</h3>
-          ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="customer-profile" data-account-id="${account.id}">+ บันทึก ข้อมูลลูกค้า</button>` : ''}
-        </div>
-        ${emptyState('ยังไม่มี ข้อมูลลูกค้า', 'เมื่อ account นี้เป็นลูกค้าแล้ว ให้บันทึกข้อมูลลูกค้า จำนวนรถ billing และ engagement ที่นี่')}
-      </div>
-    `
-  }
-
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>ข้อมูลลูกค้า</h3>
-        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="customer-profile" data-account-id="${account.id}" data-customer-id="${customer.id}">แก้ไขลูกค้า</button>` : ''}
-      </div>
-      <div class="meta-grid detail-meta">
-        <div class="meta-label">รหัสลูกค้า</div><div>${escapeHTML(customer.customer_code || '-')}</div>
-        <div class="meta-label">ผู้รับผิดชอบ</div><div>${escapeHTML(displayUser(customer.owner_id))}</div>
-        <div class="meta-label">จำนวนรถ</div><div>${escapeHTML(String(customer.cars || account.cars_estimate || '-'))}</div>
-        <div class="meta-label">การใช้งาน</div><div>${escapeHTML(customer.functions || '-')}</div>
-        <div class="meta-label">Start</div><div>${formatDate(customer.start_date)}</div>
-        <div class="meta-label">รอบบิล</div><div>${formatDate(customer.billing_date)}</div>
-        <div class="meta-label">ระดับการใช้งาน</div><div>${badge(customer.engagement_level || '-')}</div>
-        <div class="meta-label">สถานะ</div><div>${badge(customer.customer_status || '-')}</div>
-        <div class="meta-label">หมายเหตุ</div><div>${escapeHTML(customer.note || '-')}</div>
-      </div>
-    </div>
-  `
-}
-
-
-function renderTasksCard(account) {
-  const tasks = state.cache.tasks.filter((t) => t.account_id === account.id)
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>Tasks</h3>
-        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="add-task" data-account-id="${account.id}">+ เพิ่ม Task</button>` : ''}
-      </div>
-      ${renderTaskList(tasks, false)}
-    </div>
-  `
-}
-
-function renderTaskForm(account) {
-  const demos = state.cache.demos.filter((d) => d.account_id === account.id)
-  return `
-    <form class="form-grid" style="margin-top:14px" data-form="add-task" data-account-id="${account.id}">
-      ${inputField('title', 'หัวข้องาน', 'text', true)}
-      ${selectField('demo_session_id', 'Demo Session', demos, 'id', 'start_date', false)}
-      ${selectStaticField('task_type', 'ประเภทงาน', ['follow_up', 'onboarding', 'support', 'renewal', 'issue', 'other'], true, 'follow_up')}
-      ${selectStaticField('priority', 'ความสำคัญ', ['low', 'medium', 'high', 'urgent'], true, 'medium')}
-      ${selectField('assigned_to', 'ผู้รับผิดชอบ', state.cache.profiles.filter((p) => p.is_active), 'id', 'display_name', true, state.user.id)}
-      ${inputField('due_at', 'กำหนด วันที่', 'datetime-local', false)}
-      <div class="field full"><label>รายละเอียด</label><textarea name="description"></textarea></div>
-      <div class="full actions"><button class="btn primary" type="submit">เพิ่มงาน</button></div>
-    </form>
-  `
-}
-
-function renderTaskList(tasks, compact) {
-  if (!tasks.length) return '<div class="empty">ยังไม่มี task</div>'
-  const rows = tasks.map((task) => `
-    <div class="list-item">
-      <div class="list-title">
-        <span>${escapeHTML(task.title || '-')}</span>
-        <span>${badge(task.status || 'open')} ${badge(task.priority || 'medium')}</span>
-      </div>
-      <div class="list-meta">
-        บัญชี: ${escapeHTML(accountTitle(findAccount(task.account_id)))}<br>
-        ผู้รับผิดชอบ: ${escapeHTML(displayUser(task.assigned_to))} · กำหนด: ${formatDateTime(task.due_at)}
-      </div>
-      ${compact ? '' : `<div class="actions"><button class="btn small" type="button" data-action="mark-task-done" data-id="${task.id}">Done</button><button class="btn small" type="button" data-nav-account="${task.account_id}">เปิด บัญชี</button></div>`}
-    </div>
-  `).join('')
-  return `<div class="list-view">${rows}</div>`
-}
-
-
-function renderAccountActions(account) {
-  if (isReadOnly()) return ''
-  const canConvert = account.lifecycle_stage !== 'customer' && account.lifecycle_stage !== 'lost'
-  const canLost = account.lifecycle_stage !== 'lost'
-  return `
-    <div class="card">
-      <h3>Actions</h3>
+      <div class="case-note">${escapeHTML(task.notes || "")}</div>
       <div class="actions">
-        ${canConvert ? `<button class="btn primary" type="button" data-action="convert-customer" data-id="${account.id}">เปลี่ยนเป็นลูกค้า</button>` : ''}
-        ${canLost ? `<button class="btn danger" type="button" data-open-modal="mark-lost" data-account-id="${account.id}">ปิดเป็น Lost</button>` : ''}
+        ${task.status === "open" && taskCanUpdate ? `<button class="btn success" data-action="complete-task" data-id="${attr(task.id)}" type="button">เสร็จแล้ว</button>` : ""}
+        ${task.status === "open" && taskCanUpdate ? `<button class="btn danger" data-action="cancel-task" data-id="${attr(task.id)}" type="button">ยกเลิก</button>` : ""}
       </div>
-    </div>
-  `
+    </article>
+  `;
 }
 
-
-function renderLostForm(account) {
+function renderHistory() {
+  const items = state.cases;
   return `
-    <form class="form-grid single" data-form="mark-lost" data-account-id="${account.id}" novalidate>
-      <div class="callout warning">การ ปิดเป็น Lost จะเปลี่ยน stage ของ account นี้ และบันทึกเหตุผลไว้ในประวัติ</div>
-      ${selectField('lost_reason_id', 'Lost Reason', state.cache.lostReasons, 'id', 'reason_name', true)}
-      <div class="field"><label>Lost หมายเหตุ *</label><textarea name="lost_note" required></textarea><div class="field-error" data-field-error="lost_note"></div></div>
-      <button class="btn danger" type="submit">ยืนยันปิด Lost</button>
-    </form>
-  `
-}
-
-function renderAccountMeta(account) {
-  const contacts = state.cache.contacts.filter((c) => c.account_id === account.id)
-  const csOwners = state.cache.accountCsOwners.filter((o) => o.account_id === account.id).map((o) => displayUser(o.cs_user_id)).join(', ') || '-'
-  return `
-    <div class="card">
-      <h3>Meta</h3>
-      <div class="meta-grid">
-        <div class="meta-label">เลข MKT</div><div>${renderRunningNo(account)}</div>
-        <div class="meta-label">ประเภท</div><div>${escapeHTML(account.source_type || '-')}</div>
-        <div class="meta-label">Sale ผู้รับผิดชอบ</div><div>${escapeHTML(displayUser(account.sale_owner_id))}</div>
-        <div class="meta-label">CS ผู้รับผิดชอบs</div><div>${escapeHTML(csOwners)}</div>
-        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterName('leadChannels', account.lead_channel_id))}</div>
-        <div class="meta-label">แหล่งที่มา</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
-        <div class="meta-label">แคมเปญ</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
-        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterName('businessTypes', account.business_type_id))}</div>
-        <div class="meta-label">ผู้ติดต่อ</div><div>${contacts.length}</div>
-        <div class="meta-label">สร้างเมื่อ</div><div>${formatDateTime(account.created_at)}</div>
-        <div class="meta-label">อัปเดต</div><div>${formatDateTime(account.updated_at)}</div>
-      </div>
-    </div>
-  `
-}
-
-function renderHistoryCard(account) {
-  const rows = state.cache.statusHistory
-    .filter((h) => h.account_id === account.id)
-    .slice(0, 12)
-    .map((h) => [formatDateTime(h.created_at), `${h.from_stage || '-'} → ${h.to_stage || '-'}`, displayUser(h.changed_by), h.reason || '-'])
-  return `
-    <div class="card">
-      <h3>สถานะ History</h3>
-      ${simpleRowsTable(['วันที่', 'Stage', 'By', 'Reason'], rows)}
-    </div>
-  `
-}
-
-function renderViewSwitcher(key) {
-  const mode = state.viewModes[key] || 'table'
-  const modes = ['board', 'calendar', 'list', 'table', 'timeline']
-  return `
-    <div class="view-switcher">
-      ${modes.map((item) => `<button class="view-btn ${mode === item ? 'active' : ''}" type="button" data-view-key="${key}" data-view-mode="${item}">${viewLabel(item)}</button>`).join('')}
-    </div>
-  `
-}
-
-function renderAccountsCollection(items, key) {
-  const prepared = prepareCollection(items, key, 'accounts')
-  const mode = state.viewModes[key] || 'table'
-  let body = ''
-  if (mode === 'board') body = renderAccountBoard(prepared.items, key)
-  else if (mode === 'calendar') body = renderAccountCalendar(prepared.items)
-  else if (mode === 'list') body = renderAccountList(prepared.items)
-  else if (mode === 'timeline') body = renderAccountTimeline(prepared.items)
-  else body = renderAccountTable(prepared.items)
-
-  return `
-    ${renderCollectionToolbar(key, 'accounts', items.length, prepared.total)}
-    ${body}
-    ${renderPagination(key, prepared)}
-  `
-}
-
-function renderTaskCollection(items, key) {
-  const prepared = prepareCollection(items, key, 'tasks')
-  const mode = state.viewModes[key] || 'board'
-  let body = ''
-  if (mode === 'board') body = renderTaskBoard(prepared.items)
-  else if (mode === 'calendar') body = renderCalendarEvents(prepared.items.map((task) => ({ date: datePart(task.due_at), title: `Task: ${task.title}`, accountId: task.account_id })))
-  else if (mode === 'timeline') body = renderTimelineEvents(prepared.items.map((task) => ({ title: task.title, start: datePart(task.created_at), end: datePart(task.due_at), accountId: task.account_id })))
-  else if (mode === 'list') body = renderTaskList(prepared.items, false)
-  else body = renderTaskTable(prepared.items)
-
-  return `
-    ${renderCollectionToolbar(key, 'tasks', items.length, prepared.total)}
-    ${body}
-    ${renderPagination(key, prepared)}
-  `
-}
-
-function renderTrainingCollection(items, key) {
-  const prepared = prepareCollection(items, key, 'training')
-  const mode = state.viewModes[key] || 'calendar'
-  let body = ''
-  if (mode === 'calendar') body = renderCalendarEvents(prepared.items.map((t) => ({ date: t.training_date, title: `Training #${t.session_no}: ${accountTitle(findAccount(t.account_id))}`, accountId: t.account_id })))
-  else if (mode === 'timeline') body = renderTimelineEvents(prepared.items.map((t) => ({ title: `Training #${t.session_no}: ${accountTitle(findAccount(t.account_id))}`, start: t.training_date, end: t.training_date, accountId: t.account_id })))
-  else if (mode === 'board') body = renderTrainingBoard(prepared.items)
-  else if (mode === 'list') body = renderTrainingList(prepared.items)
-  else body = renderTrainingTable(prepared.items)
-
-  return `
-    ${renderCollectionToolbar(key, 'training', items.length, prepared.total)}
-    ${body}
-    ${renderPagination(key, prepared)}
-  `
-}
-
-function renderCollectionToolbar(key, type, rawTotal, filteredTotal) {
-  const filter = getFilter(key)
-  const owners = state.cache.profiles.filter((p) => p.is_active || p.role !== ROLES.PENDING)
-  return `
-    <div class="filter-panel" data-filter-panel="${key}">
-      <div class="filter-row">
-        <label class="search-field">
-          <span>ค้นหา</span>
-          <input type="search" value="${escapeAttr(filter.q || '')}" data-filter-control data-filter-key="${key}" data-filter-name="q" placeholder="ค้นหาเลข MKT, บริษัท, ผู้ติดต่อ, เบอร์, อีเมล">
-        </label>
-        ${type === 'accounts' ? selectFilter(key, 'stage', 'Stage', [['', 'ทั้งหมด'], ['lead', 'Lead'], ['demo', 'เดโม'], ['customer', 'Customer'], ['lost', 'Lost']], filter.stage || '') : ''}
-        ${type === 'accounts' || type === 'tasks' || type === 'training' ? selectFilter(key, 'status', 'สถานะ', filterOptionsFor(type, key, 'status'), filter.status || '') : ''}
-        ${selectFilter(key, 'owner', 'ผู้รับผิดชอบ', [['', 'ทุกคน']].concat(owners.map((p) => [p.id, displayUser(p.id)])), filter.owner || '')}
-      </div>
-      <div class="filter-row secondary">
-        ${type === 'accounts' ? selectFilter(key, 'channel', 'ช่องทาง', [['', 'ทุกช่องทาง']].concat(state.cache.leadChannels.map((r) => [r.id, r.name])), filter.channel || '') : ''}
-        ${type === 'accounts' ? selectFilter(key, 'source', 'แหล่งที่มา', [['', 'ทุกแหล่ง']].concat(state.cache.leadSources.map((r) => [r.id, r.name])), filter.source || '') : ''}
-        ${type === 'accounts' ? selectFilter(key, 'campaign', 'แคมเปญ', [['', 'ทุกแคมเปญ']].concat(state.cache.campaigns.map((r) => [r.id, r.name])), filter.campaign || '') : ''}
-        ${type === 'accounts' ? selectFilter(key, 'businessType', 'ธุรกิจ', [['', 'ทุกธุรกิจ']].concat(state.cache.businessTypes.map((r) => [r.id, r.name])), filter.businessType || '') : ''}
-        ${type === 'tasks' ? selectFilter(key, 'priority', 'ความสำคัญ', [['', 'ทุก ความสำคัญ'], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['urgent', 'urgent']], filter.priority || '') : ''}
-        ${selectFilter(key, 'sort', 'Sort', sortOptionsFor(type), filter.sort || '')}
-        ${selectFilter(key, 'pageSize', 'Rows', [['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']], String(filter.pageSize || 25))}
-        <button class="btn small" type="button" data-action="clear-filters" data-filter-key="${key}">Clear</button>
-        <span class="result-count">แสดง ${filteredTotal} จาก ${rawTotal} รายการ</span>
-      </div>
-    </div>
-  `
-}
-
-function selectFilter(key, name, label, options, selected) {
-  return `
-    <label class="filter-control">
-      <span>${escapeHTML(label)}</span>
-      <select data-filter-control data-filter-key="${key}" data-filter-name="${name}">
-        ${options.map(([value, text]) => `<option value="${escapeAttr(value)}" ${String(selected) === String(value) ? 'selected' : ''}>${escapeHTML(text)}</option>`).join('')}
-      </select>
-    </label>
-  `
-}
-
-function filterOptionsFor(type, key, name) {
-  if (type === 'tasks') return [['', 'ทุกสถานะ'], ['open', 'open'], ['in_progress', 'in_progress'], ['blocked', 'blocked'], ['done', 'done'], ['cancelled', 'cancelled']]
-  if (type === 'training') return [['', 'ทุกสถานะ'], ['planned', 'planned'], ['done', 'done'], ['cancelled', 'cancelled']]
-  return [['', 'ทุกสถานะ'], ['new', 'new'], ['assigned', 'assigned'], ['contacted', 'contacted'], ['follow_up', 'follow_up'], ['demo_requested', 'demo_requested'], ['customer_active', 'customer_active'], ['lost', 'lost'], ['churned', 'churned']]
-}
-
-function sortOptionsFor(type) {
-  if (type === 'tasks') return [['due_asc', 'กำหนด date ใกล้สุด'], ['updated_desc', 'อัปเดตล่าสุด'], ['priority_desc', 'ความสำคัญ สูงสุด']]
-  if (type === 'training') return [['date_asc', 'วันที่ใกล้สุด'], ['updated_desc', 'อัปเดตล่าสุด']]
-  return [['updated_desc', 'อัปเดตล่าสุด'], ['created_desc', 'สร้างล่าสุด'], ['running_asc', 'เลข MKT น้อยไปมาก'], ['name_asc', 'ชื่อ A-Z']]
-}
-
-function prepareCollection(items, key, type) {
-  const filter = getFilter(key)
-  let rows = filterCollection(items, filter, type)
-  rows = sortCollection(rows, filter.sort, type)
-  const total = rows.length
-  const pageSize = Math.max(1, Number(filter.pageSize || 25))
-  const maxPage = Math.max(1, Math.ceil(total / pageSize))
-  const page = Math.min(Math.max(1, Number(filter.page || 1)), maxPage)
-  filter.page = page
-  filter.pageSize = pageSize
-  const start = (page - 1) * pageSize
-  return {
-    items: rows.slice(start, start + pageSize),
-    total,
-    page,
-    pageSize,
-    maxPage
-  }
-}
-
-
-function getFilter(key) {
-  if (!state.filters[key]) {
-    state.filters[key] = defaultFilter(key)
-  }
-  return state.filters[key]
-}
-
-
-function defaultFilter(key) {
-  if (key === 'leads') return { q: '', stage: 'lead', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-  if (key === 'accounts') return { q: '', stage: '', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-  if (key === 'tasks') return { q: '', status: '', owner: '', priority: '', sort: 'due_asc', page: 1, pageSize: 25 }
-  if (key === 'training') return { q: '', status: '', owner: '', sort: 'date_asc', page: 1, pageSize: 25 }
-  if (key === 'demo' || key === 'customers') return { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-  return { q: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-}
-
-function filterCollection(items, filter, type) {
-  const q = String(filter.q || '').trim().toLowerCase()
-  return items.filter((item) => {
-    if (q && !matchesSearch(item, q, type)) return false
-    if (filter.stage && item.lifecycle_stage !== filter.stage) return false
-    if (filter.status) {
-      const status = item.lifecycle_status || item.status || item.demo_status || item.customer_status
-      if (status !== filter.status) return false
-    }
-    if (filter.owner) {
-      const ownerFields = [item.sale_owner_id, item.assigned_to, item.trainer_id, item.owner_id, item.cs_owner_id]
-      if (!ownerFields.includes(filter.owner)) return false
-    }
-    if (filter.channel && item.lead_channel_id !== filter.channel) return false
-    if (filter.source && item.lead_source_id !== filter.source) return false
-    if (filter.campaign && item.campaign_id !== filter.campaign) return false
-    if (filter.businessType && item.business_type_id !== filter.businessType) return false
-    if (filter.priority && item.priority !== filter.priority) return false
-    return true
-  })
-}
-
-function matchesSearch(item, q, type) {
-  const account = type === 'tasks' || type === 'training' ? findAccount(item.account_id) : item
-  const contacts = account?.id ? state.cache.contacts.filter((c) => c.account_id === account.id) : []
-  const haystack = [
-    account?.running_no,
-    account?.company_name,
-    account?.short_name,
-    account?.tax_id,
-    account?.address,
-    account?.current_gps_provider,
-    masterName('leadChannels', account?.lead_channel_id),
-    masterName('businessTypes', account?.business_type_id),
-    account?.initial_note,
-    account?.product_interest,
-    item.title,
-    item.description,
-    item.training_detail,
-    item.issue_note,
-    ...contacts.flatMap((c) => [c.contact_name, c.position, c.email, c.email_2, c.phone, c.phone_2, c.phone_3])
-  ].filter(Boolean).join(' ').toLowerCase()
-  return haystack.includes(q)
-}
-
-function sortCollection(rows, sort, type) {
-  const copy = rows.slice()
-  copy.sort((a, b) => {
-    if (sort === 'created_desc') return String(b.created_at || '').localeCompare(String(a.created_at || ''))
-    if (sort === 'running_asc') return Number(a.running_no || 999999999) - Number(b.running_no || 999999999)
-    if (sort === 'name_asc') return accountTitle(a).localeCompare(accountTitle(b), 'th')
-    if (sort === 'due_asc') return String(a.due_at || '9999').localeCompare(String(b.due_at || '9999'))
-    if (sort === 'date_asc') return String(a.training_date || '9999').localeCompare(String(b.training_date || '9999'))
-    if (sort === 'priority_desc') return priorityWeight(b.priority) - priorityWeight(a.priority)
-    return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''))
-  })
-  return copy
-}
-
-function priorityWeight(priority) {
-  return { urgent: 4, high: 3, medium: 2, low: 1 }[priority] || 0
-}
-
-function renderPagination(key, prepared) {
-  if (prepared.total <= prepared.pageSize) return ''
-  return `
-    <div class="pagination">
-      <button class="btn small" type="button" data-page-key="${key}" data-page-delta="-1" ${prepared.page <= 1 ? 'disabled' : ''}>ก่อนหน้า</button>
-      <span>หน้า ${prepared.page} / ${prepared.maxPage}</span>
-      <button class="btn small" type="button" data-page-key="${key}" data-page-delta="1" ${prepared.page >= prepared.maxPage ? 'disabled' : ''}>ถัดไป</button>
-    </div>
-  `
-}
-
-function renderAccountTable(items) {
-  if (!items.length) return emptyState('ไม่พบข้อมูล', 'ลองเปลี่ยนคำค้นหา หรือล้าง filter เพื่อดูรายการทั้งหมด')
-  const rows = items.map((a) => `
-    <tr>
-      <td>${renderRunningNo(a)}</td>
-      <td><button class="btn small" type="button" data-nav-account="${a.id}">${escapeHTML(accountTitle(a))}</button></td>
-      <td>${badge(a.lifecycle_stage)}</td>
-      <td>${badge(a.lifecycle_status || '-')}</td>
-      <td>${escapeHTML(displayUser(a.sale_owner_id))}</td>
-      <td>${escapeHTML(masterName('leadChannels', a.lead_channel_id))}</td>
-      <td>${escapeHTML(masterName('campaigns', a.campaign_id))}</td>
-      <td>${escapeHTML(masterName('businessTypes', a.business_type_id))}</td>
-      <td>${escapeHTML(String(a.cars_estimate || '-'))}</td>
-      <td>${formatDateTime(a.updated_at)}</td>
-    </tr>
-  `).join('')
-
-  return `
-    <div class="table-wrap responsive-table">
-      <table>
+    ${pageHeader("History", "ค้นย้อนหลังจาก case เดียวกัน แม้เปลี่ยน Lead → Demo → Customer → Lost/Churn แล้ว")}
+    <div class="table-wrap panel">
+      <table class="table">
         <thead>
-          <tr><th>No.</th><th>บัญชี</th><th>Stage</th><th>สถานะ</th><th>Sale</th><th>ช่องทาง</th><th>แคมเปญ</th><th>ธุรกิจ</th><th>จำนวนรถ</th><th>อัปเดต</th></tr>
+          <tr>
+            <th>Case</th>
+            <th>Stage</th>
+            <th>Sale</th>
+            <th>Contact</th>
+            <th>Follow-up</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
         </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  `
-}
-
-function renderAccountList(items) {
-  if (!items.length) return emptyState('ไม่พบข้อมูล', 'ยังไม่มีรายการที่ตรงกับเงื่อนไขนี้')
-  return `
-    <div class="list-view">
-      ${items.map((a) => `
-        <div class="list-item">
-          <div class="list-title">
-            <span>${escapeHTML(accountTitle(a))}</span>
-            <span>${badge(a.lifecycle_stage)} ${badge(a.lifecycle_status || '-')}</span>
-          </div>
-          <div class="list-meta">
-            ${renderRunningNo(a)} · Sale: ${escapeHTML(displayUser(a.sale_owner_id))} · จำนวนรถ: ${escapeHTML(String(a.cars_estimate || '-'))}<br>
-            ช่องทาง: ${escapeHTML(masterName('leadChannels', a.lead_channel_id))} · แคมเปญ: ${escapeHTML(masterName('campaigns', a.campaign_id))} · ธุรกิจ: ${escapeHTML(masterName('businessTypes', a.business_type_id))}
-          </div>
-          <div class="actions"><button class="btn small" type="button" data-nav-account="${a.id}">เปิด</button></div>
-        </div>
-      `).join('')}
-    </div>
-  `
-}
-
-function renderAccountBoard(items, key) {
-  const groupBy = key === 'tasks' ? 'status' : 'lifecycle_stage'
-  const groups = groupRows(items, groupBy)
-  const preferred = key === 'demo' ? ['demo'] : ['lead', 'demo', 'customer', 'lost']
-  const keys = Array.from(new Set(preferred.concat(Object.keys(groups))))
-
-  return `
-    <div class="board">
-      ${keys.map((group) => `
-        <div class="board-column">
-          <div class="board-title"><span>${escapeHTML(STAGE_LABELS[group] || STATUS_LABELS[group] || group)}</span><span>${groups[group]?.length || 0}</span></div>
-          ${(groups[group] || []).map((a) => `
-            <div class="board-card">
-              <strong>${escapeHTML(accountTitle(a))}</strong>
-              <div class="list-meta">${renderRunningNo(a)} · ${escapeHTML(displayUser(a.sale_owner_id))}</div>
-              <div style="margin-top:8px">${badge(a.lifecycle_status || '-')}</div>
-              <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${a.id}">เปิด</button></div>
-            </div>
-          `).join('') || '<div class="empty compact-empty">ว่าง</div>'}
-        </div>
-      `).join('')}
-    </div>
-  `
-}
-
-function renderAccountCalendar(items) {
-  const events = []
-  items.forEach((account) => {
-    state.cache.demos.filter((d) => d.account_id === account.id).forEach((demo) => {
-      events.push({ date: demo.start_date, title: `Demo Start: ${accountTitle(account)}`, accountId: account.id })
-      events.push({ date: demo.end_date, title: `Demo End: ${accountTitle(account)}`, accountId: account.id })
-    })
-    const customer = state.cache.customers.find((c) => c.account_id === account.id)
-    if (customer?.billing_date) events.push({ date: customer.billing_date, title: `รอบบิล: ${accountTitle(account)}`, accountId: account.id })
-  })
-  return renderCalendarEvents(events)
-}
-
-function renderAccountTimeline(items) {
-  const rows = []
-  items.forEach((account) => {
-    state.cache.demos.filter((d) => d.account_id === account.id).forEach((demo) => {
-      rows.push({ title: `Demo: ${accountTitle(account)}`, start: demo.start_date, end: demo.end_date, accountId: account.id })
-    })
-    const customer = state.cache.customers.find((c) => c.account_id === account.id)
-    if (customer?.start_date) {
-      rows.push({ title: `Customer: ${accountTitle(account)}`, start: customer.start_date, end: customer.billing_date || customer.start_date, accountId: account.id })
-    }
-  })
-  return renderTimelineEvents(rows)
-}
-
-function renderTaskBoard(items) {
-  const groups = groupRows(items, 'status')
-  const keys = ['open', 'in_progress', 'blocked', 'done', 'cancelled']
-  return `
-    <div class="board">
-      ${keys.map((group) => `
-        <div class="board-column">
-          <div class="board-title"><span>${escapeHTML(group)}</span><span>${groups[group]?.length || 0}</span></div>
-          ${(groups[group] || []).map((task) => `
-            <div class="board-card">
-              <strong>${escapeHTML(task.title || '-')}</strong>
-              <div class="list-meta">${escapeHTML(accountTitle(findAccount(task.account_id)))}<br>กำหนด: ${formatDateTime(task.due_at)}</div>
-              <div style="margin-top:8px">${badge(task.priority || 'medium')}</div>
-              <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-action="mark-task-done" data-id="${task.id}">Done</button><button class="btn small" type="button" data-nav-account="${task.account_id}">เปิด</button></div>
-            </div>
-          `).join('') || '<div class="empty compact-empty">ว่าง</div>'}
-        </div>
-      `).join('')}
-    </div>
-  `
-}
-
-function renderTaskTable(items) {
-  if (!items.length) return emptyState('ไม่มี task', 'ยังไม่มีงานที่ตรงกับเงื่อนไขนี้')
-  const rows = items.map((task) => `
-    <tr>
-      <td>${escapeHTML(task.title || '-')}</td>
-      <td>${escapeHTML(accountTitle(findAccount(task.account_id)))}</td>
-      <td>${badge(task.status || 'open')}</td>
-      <td>${badge(task.priority || 'medium')}</td>
-      <td>${escapeHTML(displayUser(task.assigned_to))}</td>
-      <td>${formatDateTime(task.due_at)}</td>
-      <td><button class="btn small" type="button" data-nav-account="${task.account_id}">เปิด</button></td>
-    </tr>
-  `).join('')
-  return `<div class="table-wrap responsive-table"><table><thead><tr><th>Task</th><th>บัญชี</th><th>สถานะ</th><th>ความสำคัญ</th><th>ผู้รับผิดชอบ</th><th>กำหนด</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-}
-
-function renderTrainingBoard(items) {
-  const groups = groupRows(items, 'status')
-  const keys = ['planned', 'done', 'cancelled']
-  return `<div class="board">${keys.map((key) => `<div class="board-column"><div class="board-title"><span>${key}</span><span>${groups[key]?.length || 0}</span></div>${(groups[key] || []).map(renderTrainingCardItem).join('') || '<div class="empty compact-empty">ว่าง</div>'}</div>`).join('')}</div>`
-}
-
-function renderTrainingList(items) {
-  if (!items.length) return emptyState('ไม่มี Training', 'ยังไม่มี session ที่ตรงกับเงื่อนไขนี้')
-  return `<div class="list-view">${items.map(renderTrainingCardItem).join('')}</div>`
-}
-
-function renderTrainingCardItem(t) {
-  return `
-    <div class="board-card">
-      <strong>#${t.session_no || '-'} ${escapeHTML(accountTitle(findAccount(t.account_id)))}</strong>
-      <div class="list-meta">${escapeHTML(t.training_phase || '-')} · ${formatDate(t.training_date)} · ผู้สอน: ${escapeHTML(displayUser(t.trainer_id))}</div>
-      <div style="margin-top:8px">${badge(t.status || '-')}</div>
-      <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${t.account_id}">เปิด</button></div>
-    </div>
-  `
-}
-
-function renderTrainingTable(items) {
-  if (!items.length) return emptyState('ไม่มี Training', 'ยังไม่มี session ที่ตรงกับเงื่อนไขนี้')
-  const rows = items.map((t) => `
-    <tr>
-      <td>#${t.session_no || '-'}</td>
-      <td>${escapeHTML(accountTitle(findAccount(t.account_id)))}</td>
-      <td>${escapeHTML(t.training_phase || '-')}</td>
-      <td>${formatDate(t.training_date)}</td>
-      <td>${escapeHTML(displayUser(t.trainer_id))}</td>
-      <td>${badge(t.status || '-')}</td>
-      <td><button class="btn small" type="button" data-nav-account="${t.account_id}">เปิด</button></td>
-    </tr>
-  `).join('')
-  return `<div class="table-wrap responsive-table"><table><thead><tr><th>ครั้งที่</th><th>บัญชี</th><th>ช่วงงาน</th><th>วันที่</th><th>ผู้สอน</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-}
-
-function renderCalendarEvents(events) {
-  const validEvents = events.filter((event) => event.date).sort((a, b) => String(a.date).localeCompare(String(b.date)))
-  if (!validEvents.length) return emptyState('ไม่มี event ใน calendar', 'ลองเปลี่ยน filter หรือเพิ่มวันนัดหมาย/กำหนดงาน')
-  const groups = groupRows(validEvents, 'date')
-  return `
-    <div class="calendar">
-      ${Object.keys(groups).sort().map((date) => `
-        <div class="calendar-day">
-          <div class="calendar-date">${formatDate(date)}</div>
-          <div class="list-view">
-            ${groups[date].map((event) => `<div class="list-item"><div class="list-title">${escapeHTML(event.title || '-')}</div><div class="actions"><button class="btn small" type="button" data-nav-account="${event.accountId}">เปิด</button></div></div>`).join('')}
-          </div>
-        </div>
-      `).join('')}
-    </div>
-  `
-}
-
-function renderTimelineEvents(rows) {
-  const validRows = rows.filter((row) => row.start || row.end)
-  if (!validRows.length) return emptyState('ไม่มีข้อมูล timeline', 'Timeline จะแสดงเมื่อมี start/end date หรือ due date')
-  return `
-    <div class="timeline">
-      ${validRows.map((row) => `
-        <div class="timeline-row">
-          <div class="list-title">
-            <span>${escapeHTML(row.title || '-')}</span>
-            <span class="muted">${formatDate(row.start)} → ${formatDate(row.end)}</span>
-          </div>
-          <div class="timeline-track"><div class="timeline-bar" style="width:${timelineWidth(row.start, row.end)}%"></div></div>
-          <div class="actions" style="margin-top:10px"><button class="btn small" type="button" data-nav-account="${row.accountId}">เปิด</button></div>
-        </div>
-      `).join('')}
-    </div>
-  `
-}
-
-
-function renderAddContactForm(account) {
-  return `
-    <form class="form-grid" data-form="add-contact" data-account-id="${account.id}" novalidate>
-      ${inputField('contact_name', 'ชื่อผู้ติดต่อ', 'text', true)}
-      ${inputField('position', 'ตำแหน่ง', 'text', false)}
-      ${inputField('phone', 'เบอร์หลัก', 'text', false)}
-      ${inputField('phone_2', 'เบอร์ 2', 'text', false)}
-      ${inputField('phone_3', 'เบอร์ 3', 'text', false)}
-      ${inputField('email', 'อีเมล', 'email', false)}
-      ${inputField('email_2', 'อีเมล 2', 'email', false)}
-      ${selectStaticField('contact_role', 'สิทธิ์', ['primary', 'billing', 'technical', 'user', 'decision_maker', 'other'], false, 'primary')}
-      <div class="full actions"><button class="btn primary" type="submit">เพิ่มผู้ติดต่อ</button></div>
-    </form>
-  `
-}
-
-function renderAddNoteForm(account) {
-  return `
-    <form class="form-grid" data-form="add-activity" data-account-id="${account.id}" novalidate>
-      ${selectStaticField('activity_type', 'Type', ['note', 'call', 'follow_up', 'mkt_update', 'sale_update', 'cs_update'], false)}
-      ${inputField('title', 'Title', 'text', false)}
-      <div class="field full"><label>Content *</label><textarea name="content" required></textarea><div class="field-error" data-field-error="content"></div></div>
-      ${inputField('next_follow_up_at', 'Next ติดตามต่อ', 'datetime-local', false)}
-      <div class="full actions"><button class="btn primary" type="submit">เพิ่มบันทึก</button></div>
-    </form>
-  `
-}
-
-function renderUpdateDemoForm(demo) {
-  const disabled = isReadOnly() ? 'disabled' : ''
-  return `
-    <form class="form-grid" data-form="update-demo" data-demo-id="${demo.id}" novalidate>
-      ${selectStaticField('demo_status', 'Demo สถานะ', ['requested', 'active', 'extended', 'ended', 'cancelled', 'converted', 'lost'], true, demo.demo_status || 'requested', disabled)}
-      ${inputField('start_date', 'วันที่เริ่ม', 'date', false, demo.start_date || '', disabled)}
-      ${inputField('end_date', 'วันที่สิ้นสุด', 'date', false, demo.end_date || '', disabled)}
-      <div class="field full"><label>ผลการ Demo</label><textarea name="demo_result" ${disabled}>${escapeHTML(demo.demo_result || '')}</textarea></div>
-      <div class="field full"><label>ความต้องการ</label><textarea name="requirement_note" ${disabled}>${escapeHTML(demo.requirement_note || '')}</textarea></div>
-      <div class="field full"><label>ติดตามต่อ หมายเหตุ</label><textarea name="follow_up_note" ${disabled}>${escapeHTML(demo.follow_up_note || '')}</textarea></div>
-      <div class="full actions"><button class="btn primary" type="submit" ${disabled}>บันทึก Demo</button></div>
-    </form>
-  `
-}
-
-function renderAddDemoUserForm(demoId, accountId) {
-  return `
-    <form class="form-grid" data-form="add-demo-user" data-demo-id="${demoId}" data-account-id="${accountId}" novalidate>
-      ${inputField('user_email', 'อีเมลผู้ใช้งาน', 'email', true)}
-      ${inputField('user_name', 'ชื่อผู้ใช้งาน', 'text', false)}
-      ${inputField('demo_password', 'รหัสผ่าน Demo', 'text', false)}
-      <div class="full actions"><button class="btn primary" type="submit">เพิ่มผู้ใช้เดโม</button></div>
-    </form>
-  `
-}
-
-function renderAddTrainingParticipantForm(training, account) {
-  const contacts = state.cache.contacts.filter((c) => c.account_id === account?.id)
-  return `
-    <form class="form-grid" data-form="add-training-participant" data-training-id="${training.id}" novalidate>
-      ${selectStaticField('participant_type', 'Participant Type', ['internal', 'customer'], true, 'customer')}
-      ${selectField('profile_id', 'ทีมเรา', state.cache.profiles.filter((p) => p.is_active), 'id', 'display_name', false)}
-      ${selectField('contact_id', 'ฝั่งลูกค้า', contacts, 'id', 'contact_name', false)}
-      ${inputField('name_snapshot', 'ชื่อ Snapshot', 'text', false)}
-      ${inputField('email_snapshot', 'อีเมล Snapshot', 'email', false)}
-      <div class="field full"><label>สิทธิ์ / หมายเหตุ</label><textarea name="role_note"></textarea></div>
-      <div class="full actions"><button class="btn primary" type="submit">Add Participant</button></div>
-    </form>
-  `
-}
-
-function renderCustomerProfileForm(account) {
-  const customer = state.cache.customers.find((c) => c.account_id === account.id)
-  const disabled = isReadOnly() ? 'disabled' : ''
-  return `
-    <form class="form-grid" data-form="customer-profile" data-account-id="${account.id}" data-customer-id="${customer?.id || ''}" novalidate>
-      ${inputField('customer_code', 'รหัสลูกค้า', 'text', false, customer?.customer_code || '', disabled)}
-      ${selectField('owner_id', 'ผู้รับผิดชอบ', state.cache.profiles.filter((p) => ['cs', 'admin'].includes(p.role)), 'id', 'display_name', false, customer?.owner_id || '', disabled)}
-      ${inputField('cars', 'จำนวนรถ / จำนวนรถ', 'number', false, customer?.cars || account.cars_estimate || '', disabled)}
-      ${inputField('functions', 'การใช้งาน / Use Case', 'text', false, customer?.functions || '', disabled)}
-      ${inputField('start_date', 'Start วันที่', 'date', false, customer?.start_date || '', disabled)}
-      ${inputField('billing_date', 'รอบบิล วันที่', 'date', false, customer?.billing_date || '', disabled)}
-      ${selectStaticField('engagement_level', 'ระดับการใช้งาน Level', ['low', 'medium', 'high', 'risk'], false, customer?.engagement_level || 'medium', disabled)}
-      ${selectStaticField('customer_status', 'สถานะ', ['onboarding', 'active', 'inactive', 'churned'], false, customer?.customer_status || 'onboarding', disabled)}
-      <div class="field full"><label>Customer หมายเหตุ</label><textarea name="note" ${disabled}>${escapeHTML(customer?.note || '')}</textarea></div>
-      <div class="full actions"><button class="btn primary" type="submit" ${disabled}>บันทึก ข้อมูลลูกค้า</button></div>
-    </form>
-  `
-}
-
-function renderCreateMasterForm(table, nameField) {
-  return `
-    <form class="form-grid single" data-form="create-master" data-table="${escapeAttr(table)}" data-name-field="${escapeAttr(nameField)}" novalidate>
-      ${inputField('name', 'ชื่อรายการ', 'text', true)}
-      <div class="full actions"><button class="btn primary" type="submit">Add</button></div>
-    </form>
-  `
-}
-
-
-function renderModal() {
-  if (!state.modal) return ''
-  const modal = state.modal
-  const title = modalTitle(modal)
-  const content = modalContent(modal)
-
-  return `
-    <div class="modal-backdrop" data-modal-backdrop>
-      <section class="modal-card" data-modal-card role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}">
-        <header class="modal-header">
-          <div>
-            <h2>${escapeHTML(title)}</h2>
-            <p>${escapeHTML(modalSubtitle(modal))}</p>
-          </div>
-          <button class="modal-close" type="button" data-close-modal aria-label="ปิด">×</button>
-        </header>
-        <div class="modal-body">
-          ${content}
-        </div>
-      </section>
-    </div>
-  `
-}
-
-function modalTitle(modal) {
-  const map = {
-    'create-mkt-lead': 'สร้าง MKT Lead',
-    'create-sales-lead': 'Sale สร้าง Lead',
-    'add-contact': 'เพิ่มผู้ติดต่อ',
-    'add-activity': 'เพิ่ม บันทึก',
-    'request-demo': 'ขอเดโม',
-    'edit-demo': 'แก้ไข Demo',
-    'add-demo-user': 'เพิ่ม Demo User',
-    'add-training': 'เพิ่ม Training',
-    'add-training-participant': 'เพิ่มผู้เข้าร่วม Training',
-    'customer-profile': 'บันทึก ข้อมูลลูกค้า',
-    'add-task': 'เพิ่ม Task',
-    'mark-lost': 'ปิดเป็น Lost',
-    'create-master': `เพิ่ม ${modal.label || 'Master Data'}`,
-    'account-overview': 'แก้ไข บัญชี Overview'
-  }
-  return map[modal.type] || 'Modal'
-}
-
-function modalSubtitle(modal) {
-  const account = modal.accountId ? findAccount(modal.accountId) : null
-  if (account) return accountTitle(account)
-  if (modal.type === 'create-mkt-lead') return 'ระบบจะออก เลข MKT และ assign Sale แบบ round-robin'
-  if (modal.type === 'create-sales-lead') return 'Lead นี้จะไม่มี เลข MKT และ owner คือ Sale ที่สร้าง'
-  return ''
-}
-
-function modalContent(modal) {
-  const account = modal.accountId ? findAccount(modal.accountId) : null
-  if (modal.type === 'create-mkt-lead') return renderMktLeadForm()
-  if (modal.type === 'create-sales-lead') return renderSaleLeadForm()
-  if (modal.type === 'add-contact' && account) return renderAddContactForm(account)
-  if (modal.type === 'add-activity' && account) return renderAddNoteForm(account)
-  if (modal.type === 'request-demo' && account) return renderRequestDemoForm(account)
-  if (modal.type === 'edit-demo') {
-    const demo = state.cache.demos.find((item) => item.id === modal.demoId)
-    return demo ? renderUpdateDemoForm(demo) : emptyState('ไม่พบ Demo', 'ข้อมูลอาจถูกลบหรือไม่มีสิทธิ์เข้าถึง')
-  }
-  if (modal.type === 'add-demo-user') {
-    return modal.demoId && modal.accountId ? renderAddDemoUserForm(modal.demoId, modal.accountId) : emptyState('ไม่พบ Demo', 'ไม่สามารถเพิ่มผู้ใช้งาน Demo ได้')
-  }
-  if (modal.type === 'add-training' && account) return renderTrainingForm(account)
-  if (modal.type === 'add-training-participant') {
-    const training = state.cache.trainings.find((item) => item.id === modal.trainingId)
-    return training ? renderAddTrainingParticipantForm(training, account || findAccount(training.account_id)) : emptyState('ไม่พบ Training', 'ไม่สามารถเพิ่มผู้เข้าร่วมได้')
-  }
-  if (modal.type === 'customer-profile' && account) return renderCustomerProfileForm(account)
-  if (modal.type === 'add-task' && account) return renderTaskForm(account)
-  if (modal.type === 'mark-lost' && account) return renderLostForm(account)
-  if (modal.type === 'create-master') return renderCreateMasterForm(modal.table, modal.nameField)
-  if (modal.type === 'account-overview' && account) return renderAccountOverviewForm(account)
-  return emptyState('ไม่พบข้อมูล', 'กรุณาปิด modal แล้วลองใหม่')
-}
-
-function openModalFromDataset(dataset) {
-  state.modal = {
-    type: dataset.openModal,
-    accountId: dataset.accountId || '',
-    demoId: dataset.demoId || '',
-    trainingId: dataset.trainingId || '',
-    table: dataset.table || '',
-    nameField: dataset.nameField || '',
-    label: dataset.label || ''
-  }
-  render()
-}
-
-function closeModal() {
-  state.modal = null
-  render()
-}
-
-
-async function onClick(event) {
-  const closeBtn = event.target.closest('[data-close-modal]')
-  if (closeBtn || event.target.matches('[data-modal-backdrop]')) {
-    closeModal()
-    return
-  }
-
-  const openModalBtn = event.target.closest('[data-open-modal]')
-  if (openModalBtn) {
-    openModalFromDataset(openModalBtn.dataset)
-    return
-  }
-
-  const nav = event.target.closest('[data-nav]')
-  if (nav) {
-    location.hash = `#/${nav.dataset.nav}`
-    return
-  }
-
-  const navAccount = event.target.closest('[data-nav-account]')
-  if (navAccount) {
-    location.hash = `#/account/${navAccount.dataset.navAccount}`
-    return
-  }
-
-  const viewBtn = event.target.closest('[data-view-key]')
-  if (viewBtn) {
-    state.viewModes[viewBtn.dataset.viewKey] = viewBtn.dataset.viewMode
-    render()
-    return
-  }
-
-  const leadTab = event.target.closest('[data-lead-tab]')
-  if (leadTab) {
-    const filter = getFilter('leads')
-    filter.stage = leadTab.dataset.leadTab
-    filter.page = 1
-    render()
-    return
-  }
-
-  const tabBtn = event.target.closest('[data-account-tab]')
-  if (tabBtn) {
-    state.accountTabs[tabBtn.dataset.accountId] = tabBtn.dataset.accountTab
-    render()
-    return
-  }
-
-  const pageBtn = event.target.closest('[data-page-key]')
-  if (pageBtn) {
-    const filter = getFilter(pageBtn.dataset.pageKey)
-    filter.page = Number(filter.page || 1) + Number(pageBtn.dataset.pageDelta || 0)
-    render()
-    return
-  }
-
-  const action = event.target.closest('[data-action]')
-  if (!action) return
-
-  const type = action.dataset.action
-  if (type === 'toggle-sidebar') {
-    state.sidebarCollapsed = !state.sidebarCollapsed
-    localStorage.setItem('crm_sidebar_collapsed', state.sidebarCollapsed ? 'true' : 'false')
-    render()
-    return
-  }
-
-  if (type === 'logout') return withActionBusy(action, logout)
-  if (type === 'refresh-data') return withActionBusy(action, refreshData)
-  if (type === 'print') return window.print()
-  if (type === 'show-lost-form') {
-    state.modal = { type: 'mark-lost', accountId: action.dataset.id }
-    render()
-    return
-  }
-  if (type === 'convert-customer') return withActionBusy(action, () => convertCustomer(action.dataset.id))
-  if (type === 'mark-task-done') return withActionBusy(action, () => markTaskDone(action.dataset.id))
-  if (type === 'save-profile') return withActionBusy(action, () => saveProfile(action.dataset.id))
-  if (type === 'toggle-master') return withActionBusy(action, () => toggleMaster(action.dataset.table, action.dataset.id, action.dataset.active === 'true'))
-  if (type === 'clear-filters') {
-    const key = action.dataset.filterKey
-    state.filters[key] = defaultFilter(key)
-    render()
-  }
-}
-
-
-async function onSubmit(event) {
-  const form = event.target.closest('form[data-form]')
-  if (!form) return
-  event.preventDefault()
-  if (form.dataset.busy === 'true') return
-
-  const type = form.dataset.form
-  let success = false
-  try {
-    clearFormErrors(form)
-    setFormBusy(form, true)
-
-    if (type === 'login') await login(form)
-    if (type === 'create-mkt-lead') await createMktLead(form)
-    if (type === 'create-sales-lead') await createSalesLead(form)
-    if (type === 'account-overview') await saveAccountOverview(form)
-    if (type === 'add-contact') await addContact(form)
-    if (type === 'add-activity') await addNote(form)
-    if (type === 'request-demo') await requestDemo(form)
-    if (type === 'update-demo') await updateDemo(form)
-    if (type === 'add-demo-user') await addDemoUser(form)
-    if (type === 'add-training') await addTraining(form)
-    if (type === 'add-training-participant') await addTrainingParticipant(form)
-    if (type === 'customer-profile') await saveCustomerProfile(form)
-    if (type === 'add-task') await addTask(form)
-    if (type === 'mark-lost') await markLost(form)
-    if (type === 'create-master') await createMaster(form)
-
-    success = true
-  } catch (error) {
-    showFormError(form, error)
-    toast(error.message || String(error), 'error')
-  } finally {
-    setFormBusy(form, false)
-    if (success && form.closest('[data-modal-card]')) {
-      state.modal = null
-      render()
-    }
-  }
-}
-
-function onChange(event) {
-  const target = event.target
-  if (target.matches('[data-profile-field]')) {
-    target.dataset.dirty = 'true'
-  }
-
-  if (target.matches('[data-filter-control]') && target.type !== 'search') {
-    const filter = getFilter(target.dataset.filterKey)
-    const value = target.value
-    filter[target.dataset.filterName] = target.dataset.filterName === 'pageSize' ? Number(value) : value
-    filter.page = 1
-    render()
-  }
-}
-
-function onInput(event) {
-  const target = event.target
-  if (!target.matches('[data-filter-control][type="search"]')) return
-  const filter = getFilter(target.dataset.filterKey)
-  filter[target.dataset.filterName] = target.value
-  filter.page = 1
-  window.clearTimeout(filterTimer)
-  filterTimer = window.setTimeout(() => render(), 300)
-}
-
-async function login(form) {
-  const values = formValues(form)
-  if (!nullIfBlank(values.email) || !nullIfBlank(values.password)) {
-    throw createValidationError('กรุณากรอกอีเมลและรหัสผ่าน', ['email', 'password'])
-  }
-  const { error } = await state.client.auth.signInWithPassword({
-    email: values.email,
-    password: values.password
-  })
-  if (error) throw error
-  toast('เข้าสู่ระบบแล้ว', 'success')
-}
-
-async function logout() {
-  if (state.client) await state.client.auth.signOut()
-  state.session = null
-  state.user = null
-  state.profile = null
-  resetCache()
-  render()
-}
-
-async function refreshData() {
-  try {
-    await loadAllData()
-    render()
-    toast('รีเฟรช สำเร็จ', 'success')
-  } catch (error) {
-    toast(error.message || String(error), 'error')
-  }
-}
-
-
-async function createMktLead(form) {
-  const values = formValues(form)
-  ensureLeadMinimum(values)
-  ensureRequired(values, 'lead_channel_id', 'ต้องเลือกช่องทาง', ['lead_channel_id'])
-  const { data, error } = await state.client.rpc('create_mkt_lead', {
-    p_company_name: nullIfBlank(values.company_name),
-    p_contact_name: nullIfBlank(values.contact_name),
-    p_phone: nullIfBlank(values.phone),
-    p_email: nullIfBlank(values.email),
-    p_lead_source_id: nullIfBlank(values.lead_source_id),
-    p_lead_channel_id: nullIfBlank(values.lead_channel_id),
-    p_campaign_id: nullIfBlank(values.campaign_id),
-    p_initial_note: nullIfBlank(values.initial_note),
-    p_cars_estimate: numberOrNull(values.cars_estimate),
-    p_module_ids: values.module_ids || []
-  })
-  if (error) throw error
-
-  form.reset()
-  await refreshData()
-
-  const account = state.cache.accounts.find((item) => item.id === data)
-  const assignedSale = account ? displayUser(account.sale_owner_id) : '-'
-  const runningNo = account?.running_no ? `#${account.running_no}` : '-'
-  toast(`สร้าง MKT Lead สำเร็จ ${runningNo} / Assigned to: ${assignedSale}`, 'success')
-}
-
-
-async function createSalesLead(form) {
-  const values = formValues(form)
-  ensureLeadMinimum(values)
-  ensureRequired(values, 'lead_channel_id', 'ต้องเลือกช่องทาง', ['lead_channel_id'])
-  const { data, error } = await state.client.rpc('create_sales_lead', {
-    p_company_name: nullIfBlank(values.company_name),
-    p_contact_name: nullIfBlank(values.contact_name),
-    p_position: nullIfBlank(values.position),
-    p_phone: nullIfBlank(values.phone),
-    p_phone_2: nullIfBlank(values.phone_2),
-    p_phone_3: nullIfBlank(values.phone_3),
-    p_email: nullIfBlank(values.email),
-    p_email_2: nullIfBlank(values.email_2),
-    p_tax_id: nullIfBlank(values.tax_id),
-    p_address: nullIfBlank(values.address),
-    p_business_type_id: nullIfBlank(values.business_type_id),
-    p_lead_channel_id: nullIfBlank(values.lead_channel_id),
-    p_initial_note: nullIfBlank(values.initial_note),
-    p_cars_estimate: numberOrNull(values.cars_estimate),
-    p_current_gps_provider: nullIfBlank(values.current_gps_provider),
-    p_module_ids: values.module_ids || []
-  })
-  if (error) throw error
-
-  if (nullIfBlank(values.note)) {
-    const { error: noteError } = await state.client.from(TABLES.activities).insert({
-      account_id: data,
-      activity_type: 'sale_update',
-      title: 'Sale note',
-      content: values.note,
-      created_by: state.user.id
-    })
-    if (noteError) throw noteError
-  }
-
-  form.reset()
-  await refreshData()
-  const account = state.cache.accounts.find((item) => item.id === data)
-  toast(`สร้าง Sale Lead สำเร็จ / ผู้รับผิดชอบ: ${displayUser(account?.sale_owner_id || state.user.id)}`, 'success')
-}
-
-function ensureLeadMinimum(values) {
-  const hasMinimum = [values.company_name, values.contact_name, values.phone, values.phone_2, values.phone_3, values.email, values.email_2, values.initial_note]
-    .some((value) => String(value || '').trim())
-  if (!hasMinimum) {
-    throw createValidationError('ต้องกรอกข้อมูลขั้นต่ำอย่างน้อย 1 อย่าง เช่น ผู้ติดต่อ เบอร์ อีเมล รายละเอียด หรือชื่อบริษัท', ['company_name', 'contact_name', 'phone', 'email', 'initial_note'])
-  }
-}
-
-function ensureRequired(values, fieldName, message, fieldNames = [fieldName]) {
-  if (!String(values[fieldName] || '').trim()) {
-    throw createValidationError(message, fieldNames)
-  }
-}
-
-
-async function saveAccountOverview(form) {
-  const accountId = form.dataset.accountId
-  const values = formValues(form)
-  const payload = {
-    company_name: nullIfBlank(values.company_name),
-    short_name: nullIfBlank(values.short_name),
-    tax_id: nullIfBlank(values.tax_id),
-    address: nullIfBlank(values.address),
-    cars_estimate: numberOrNull(values.cars_estimate),
-    lead_channel_id: nullIfBlank(values.lead_channel_id),
-    lead_source_id: nullIfBlank(values.lead_source_id),
-    campaign_id: nullIfBlank(values.campaign_id),
-    business_type_id: nullIfBlank(values.business_type_id),
-    contact_status_id: nullIfBlank(values.contact_status_id),
-    current_gps_provider: nullIfBlank(values.current_gps_provider),
-    product_interest: nullIfBlank(values.product_interest)
-  }
-
-  const { error } = await state.client.from(TABLES.accounts).update(payload).eq('id', accountId)
-  if (error) throw error
-
-  await replaceAccountModules(accountId, values.module_ids || [], 'interested')
-  await refreshData()
-  toast('บันทึก บัญชี สำเร็จ', 'success')
-}
-
-async function replaceAccountModules(accountId, moduleIds, moduleType) {
-  const existing = state.cache.accountModules.filter((row) => row.account_id === accountId && row.module_type === moduleType)
-  if (existing.length) {
-    const { error } = await state.client
-      .from(TABLES.accountModules)
-      .delete()
-      .in('id', existing.map((row) => row.id))
-    if (error) throw error
-  }
-
-  if (moduleIds.length) {
-    const rows = moduleIds.map((moduleId) => ({ account_id: accountId, module_id: moduleId, module_type: moduleType }))
-    const { error } = await state.client.from(TABLES.accountModules).insert(rows)
-    if (error) throw error
-  }
-}
-
-async function addContact(form) {
-  const values = formValues(form)
-  const payload = {
-    account_id: form.dataset.accountId,
-    contact_name: values.contact_name,
-    position: nullIfBlank(values.position),
-    email: nullIfBlank(values.email),
-    email_2: nullIfBlank(values.email_2),
-    phone: nullIfBlank(values.phone),
-    phone_2: nullIfBlank(values.phone_2),
-    phone_3: nullIfBlank(values.phone_3),
-    contact_role: nullIfBlank(values.contact_role),
-    created_by: state.user.id
-  }
-
-  const { error } = await state.client.from(TABLES.contacts).insert(payload)
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('เพิ่ม Contact สำเร็จ', 'success')
-}
-
-async function addNote(form) {
-  const values = formValues(form)
-  const payload = {
-    account_id: form.dataset.accountId,
-    activity_type: values.activity_type || 'note',
-    title: nullIfBlank(values.title),
-    content: values.content,
-    next_follow_up_at: nullIfBlank(values.next_follow_up_at),
-    created_by: state.user.id
-  }
-
-  const { error } = await state.client.from(TABLES.activities).insert(payload)
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('เพิ่ม บันทึก สำเร็จ', 'success')
-}
-
-async function requestDemo(form) {
-  const values = formValues(form)
-  if (values.start_date && values.end_date && values.end_date < values.start_date) {
-    throw createValidationError('วันที่สิ้นสุด Demo ต้องไม่น้อยกว่าวันที่เริ่ม', ['start_date', 'end_date'])
-  }
-  const { error } = await state.client.rpc('create_demo_request', {
-    p_account_id: form.dataset.accountId,
-    p_start_date: values.start_date,
-    p_end_date: values.end_date,
-    p_module_ids: values.module_ids || [],
-    p_cs_owner_ids: values.cs_owner_ids || [],
-    p_requirement_note: nullIfBlank(values.requirement_note)
-  })
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('สร้าง Demo สำเร็จ', 'success')
-}
-
-async function updateDemo(form) {
-  const values = formValues(form)
-  const payload = {
-    demo_status: values.demo_status,
-    start_date: nullIfBlank(values.start_date),
-    end_date: nullIfBlank(values.end_date),
-    demo_result: nullIfBlank(values.demo_result),
-    requirement_note: nullIfBlank(values.requirement_note),
-    follow_up_note: nullIfBlank(values.follow_up_note)
-  }
-
-  const { error } = await state.client.from(TABLES.demos).update(payload).eq('id', form.dataset.demoId)
-  if (error) throw error
-  await refreshData()
-  toast('บันทึก Demo สำเร็จ', 'success')
-}
-
-async function addDemoUser(form) {
-  const values = formValues(form)
-  const payload = {
-    demo_session_id: form.dataset.demoId,
-    account_id: form.dataset.accountId,
-    user_email: values.user_email,
-    user_name: nullIfBlank(values.user_name),
-    demo_password: nullIfBlank(values.demo_password),
-    is_active: true
-  }
-
-  const { error } = await state.client.from(TABLES.demoUsers).insert(payload)
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('เพิ่ม Demo User สำเร็จ', 'success')
-}
-
-async function addTraining(form) {
-  const values = formValues(form)
-  const payload = {
-    account_id: form.dataset.accountId,
-    demo_session_id: nullIfBlank(values.demo_session_id),
-    customer_profile_id: nullIfBlank(values.customer_profile_id),
-    training_phase: values.training_phase,
-    session_no: numberOrNull(values.session_no),
-    training_date: values.training_date,
-    trainer_id: nullIfBlank(values.trainer_id) || state.user.id,
-    training_detail: values.training_detail,
-    issue_note: nullIfBlank(values.issue_note),
-    next_action: nullIfBlank(values.next_action),
-    status: values.status || 'planned',
-    created_by: state.user.id
-  }
-
-  const { error } = await state.client.from(TABLES.trainings).insert(payload)
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('เพิ่ม Training สำเร็จ', 'success')
-}
-
-async function addTrainingParticipant(form) {
-  const values = formValues(form)
-  const payload = {
-    training_session_id: form.dataset.trainingId,
-    participant_type: values.participant_type,
-    profile_id: nullIfBlank(values.profile_id),
-    contact_id: nullIfBlank(values.contact_id),
-    name_snapshot: nullIfBlank(values.name_snapshot),
-    email_snapshot: nullIfBlank(values.email_snapshot),
-    role_note: nullIfBlank(values.role_note)
-  }
-
-  if (!payload.profile_id && !payload.contact_id && !payload.name_snapshot) {
-    throw new Error('ต้องเลือกผู้เข้าร่วมหรือกรอกชื่อ snapshot')
-  }
-
-  const { error } = await state.client.from(TABLES.trainingParticipants).insert(payload)
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('เพิ่มผู้เข้าร่วม Training สำเร็จ', 'success')
-}
-
-async function saveCustomerProfile(form) {
-  const values = formValues(form)
-  const accountId = form.dataset.accountId
-  const customerId = form.dataset.customerId
-  const payload = {
-    account_id: accountId,
-    customer_code: nullIfBlank(values.customer_code),
-    owner_id: nullIfBlank(values.owner_id),
-    cars: numberOrNull(values.cars),
-    functions: nullIfBlank(values.functions),
-    start_date: nullIfBlank(values.start_date),
-    billing_date: nullIfBlank(values.billing_date),
-    engagement_level: values.engagement_level || 'medium',
-    customer_status: values.customer_status || 'onboarding',
-    note: nullIfBlank(values.note)
-  }
-
-  const query = customerId
-    ? state.client.from(TABLES.customers).update(payload).eq('id', customerId)
-    : state.client.from(TABLES.customers).insert(payload)
-
-  const { error } = await query
-  if (error) throw error
-
-  const { error: stageError } = await state.client.rpc('change_account_stage', {
-    p_account_id: accountId,
-    p_to_stage: 'customer',
-    p_to_status: 'customer_active',
-    p_lost_reason_id: null,
-    p_lost_note: null
-  })
-  if (stageError) throw stageError
-
-  await refreshData()
-  toast('บันทึก ข้อมูลลูกค้า สำเร็จ', 'success')
-}
-
-async function addTask(form) {
-  const values = formValues(form)
-  const payload = {
-    account_id: form.dataset.accountId,
-    demo_session_id: nullIfBlank(values.demo_session_id),
-    title: values.title,
-    description: nullIfBlank(values.description),
-    task_type: values.task_type || 'follow_up',
-    status: 'open',
-    priority: values.priority || 'medium',
-    assigned_to: values.assigned_to,
-    created_by: state.user.id,
-    due_at: nullIfBlank(values.due_at)
-  }
-
-  const { error } = await state.client.from(TABLES.tasks).insert(payload)
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('เพิ่ม Task สำเร็จ', 'success')
-}
-
-async function markLost(form) {
-  if (!window.confirm('ยืนยันปิด บัญชี นี้เป็น Lost?')) return
-  const values = formValues(form)
-  const { error } = await state.client.rpc('change_account_stage', {
-    p_account_id: form.dataset.accountId,
-    p_to_stage: 'lost',
-    p_to_status: 'lost',
-    p_lost_reason_id: values.lost_reason_id,
-    p_lost_note: values.lost_note
-  })
-  if (error) throw error
-  await refreshData()
-  toast('ปิดเป็น Lost สำเร็จ', 'success')
-}
-
-async function convertCustomer(accountId) {
-  if (!window.confirm('ยืนยัน Convert เป็น Customer?')) return
-  const { error } = await state.client.rpc('change_account_stage', {
-    p_account_id: accountId,
-    p_to_stage: 'customer',
-    p_to_status: 'customer_active',
-    p_lost_reason_id: null,
-    p_lost_note: null
-  })
-  if (error) {
-    toast(error.message, 'error')
-    return
-  }
-
-  const existing = state.cache.customers.find((c) => c.account_id === accountId)
-  if (!existing) {
-    const account = findAccount(accountId)
-    const { error: insertError } = await state.client.from(TABLES.customers).insert({
-      account_id: accountId,
-      owner_id: state.profile.role === ROLES.CS ? state.user.id : null,
-      cars: account?.cars_estimate || null,
-      engagement_level: 'medium',
-      customer_status: 'onboarding'
-    })
-    if (insertError) {
-      toast(insertError.message, 'error')
-      return
-    }
-  }
-
-  await refreshData()
-  toast('Convert เป็น Customer แล้ว', 'success')
-}
-
-async function markTaskDone(taskId) {
-  if (!window.confirm('ยืนยันปิด Task นี้เป็น Done?')) return
-  const { error } = await state.client.from(TABLES.tasks).update({
-    status: 'done',
-    completed_at: new Date().toISOString()
-  }).eq('id', taskId)
-  if (error) {
-    toast(error.message, 'error')
-    return
-  }
-  await refreshData()
-  toast('ปิด Task แล้ว', 'success')
-}
-
-async function saveProfile(profileId) {
-  const displayInput = document.querySelector(`[data-profile-id="${profileId}"][data-profile-field="display_name"]`)
-  const roleInput = document.querySelector(`[data-profile-id="${profileId}"][data-profile-field="role"]`)
-  const activeInput = document.querySelector(`[data-profile-id="${profileId}"][data-profile-field="is_active"]`)
-  const payload = {
-    display_name: nullIfBlank(displayInput?.value),
-    role: roleInput?.value || 'pending',
-    is_active: activeInput?.value === 'true'
-  }
-
-  const { error } = await state.client.from(TABLES.profiles).update(payload).eq('id', profileId)
-  if (error) {
-    toast(error.message, 'error')
-    return
-  }
-  await refreshData()
-  toast('บันทึก Profile แล้ว', 'success')
-}
-
-async function createMaster(form) {
-  const values = formValues(form)
-  const nameField = form.dataset.nameField
-  const payload = { [nameField]: values.name, is_active: true }
-  const { error } = await state.client.from(form.dataset.table).insert(payload)
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('เพิ่ม Master Data แล้ว', 'success')
-}
-
-async function toggleMaster(table, id, active) {
-  const { error } = await state.client.from(table).update({ is_active: active }).eq('id', id)
-  if (error) {
-    toast(error.message, 'error')
-    return
-  }
-  await refreshData()
-  toast('อัปเดต Master Data แล้ว', 'success')
-}
-
-function showLostForm(accountId) {
-  const form = document.getElementById(`lost-form-${accountId}`)
-  if (form) form.style.display = form.style.display === 'none' ? 'grid' : 'none'
-}
-
-function findAccount(accountId) {
-  return state.cache.accounts.find((a) => a.id === accountId) || null
-}
-
-function accountTitle(account) {
-  if (!account) return '-'
-  const primary = state.cache.contacts.find((c) => c.account_id === account.id && c.is_primary) ||
-    state.cache.contacts.find((c) => c.account_id === account.id)
-  return account.company_name || account.short_name || primary?.contact_name || primary?.phone || primary?.email || `บัญชี ${String(account.id).slice(0, 8)}`
-}
-
-function renderRunningNo(account) {
-  if (!account?.running_no) return '<span class="muted">ไม่มีเลข MKT</span>'
-  return `#${escapeHTML(String(account.running_no))}`
-}
-
-function accountModuleIds(accountId) {
-  return state.cache.accountModules
-    .filter((row) => row.account_id === accountId && ['interested', 'demo', 'subscribed'].includes(row.module_type))
-    .map((row) => row.module_id)
-}
-
-function masterName(cacheKey, id) {
-  if (!id) return '-'
-  const table = state.cache[cacheKey] || []
-  const row = table.find((item) => item.id === id)
-  return row?.name || row?.module_name || row?.reason_name || '-'
-}
-
-function displayUser(id) {
-  if (!id) return '-'
-  const profile = state.cache.profiles.find((p) => p.id === id)
-  return profile?.display_name || profile?.email || String(id).slice(0, 8)
-}
-
-function contactName(contactId) {
-  if (!contactId) return '-'
-  const contact = state.cache.contacts.find((c) => c.id === contactId)
-  return contact?.contact_name || '-'
-}
-
-function contactEmail(contactId) {
-  if (!contactId) return ''
-  const contact = state.cache.contacts.find((c) => c.id === contactId)
-  return contact?.email || ''
-}
-
-function roleLabel(role) {
-  const labels = {
-    pending: 'Pending',
-    admin: 'ผู้ดูแล',
-    mkt: 'MKT',
-    sale: 'Sale',
-    cs: 'CS',
-    manager: 'Manager'
-  }
-  return labels[role] || role || '-'
-}
-
-function fieldId(name) {
-  fieldSeq += 1
-  return `${name}-${fieldSeq}`
-}
-
-
-function readonlyDisplay(name, label, value) {
-  const id = fieldId(name)
-  return `
-    <div class="field readonly-field" data-field="${escapeAttr(name)}">
-      <label for="${escapeAttr(id)}">${escapeHTML(label)}</label>
-      <input id="${escapeAttr(id)}" type="text" value="${escapeAttr(value || '-')}" disabled>
-      <div class="help">ข้อมูลนี้ระบบจัดการให้อัตโนมัติ</div>
-    </div>
-  `
-}
-
-function activeSalesNames() {
-  const sales = state.cache.profiles
-    .filter((profile) => profile.role === ROLES.SALE && profile.is_active)
-    .map((profile) => displayUser(profile.id))
-    .filter(Boolean)
-  return sales.length ? `ระบบจะวน assign ให้ Sale active: ${sales.join(', ')}` : ''
-}
-
-function inputField(name, label, type, required, value = '', disabled = '') {
-  const id = fieldId(name)
-  return `
-    <div class="field" data-field="${escapeAttr(name)}">
-      <label for="${escapeAttr(id)}">${escapeHTML(label)}${required ? ' *' : ''}</label>
-      <input id="${escapeAttr(id)}" name="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${escapeAttr(value)}" ${required ? 'required' : ''} ${disabled} aria-describedby="${escapeAttr(id)}-help">
-      <div class="field-error" data-field-error="${escapeAttr(name)}"></div>
-    </div>
-  `
-}
-
-function selectField(name, label, rows, valueField, labelField, required, selected = '', disabled = '') {
-  const id = fieldId(name)
-  const options = [`<option value="">- เลือก -</option>`].concat((rows || []).map((row) => {
-    const labelValue = row[labelField] || row.name || row.email || row.id
-    return `<option value="${escapeAttr(row[valueField])}" ${String(selected) === String(row[valueField]) ? 'selected' : ''}>${escapeHTML(labelValue)}</option>`
-  })).join('')
-  return `
-    <div class="field" data-field="${escapeAttr(name)}">
-      <label for="${escapeAttr(id)}">${escapeHTML(label)}${required ? ' *' : ''}</label>
-      <select id="${escapeAttr(id)}" name="${escapeAttr(name)}" ${required ? 'required' : ''} ${disabled}>${options}</select>
-      <div class="field-error" data-field-error="${escapeAttr(name)}"></div>
-    </div>
-  `
-}
-
-function selectStaticField(name, label, values, required, selected = '', disabled = '') {
-  const id = fieldId(name)
-  const options = [`<option value="">- เลือก -</option>`].concat(values.map((value) => `<option value="${escapeAttr(value)}" ${selected === value ? 'selected' : ''}>${escapeHTML(value)}</option>`)).join('')
-  return `
-    <div class="field" data-field="${escapeAttr(name)}">
-      <label for="${escapeAttr(id)}">${escapeHTML(label)}${required ? ' *' : ''}</label>
-      <select id="${escapeAttr(id)}" name="${escapeAttr(name)}" ${required ? 'required' : ''} ${disabled}>${options}</select>
-      <div class="field-error" data-field-error="${escapeAttr(name)}"></div>
-    </div>
-  `
-}
-
-function multiSelectField(name, label, rows, valueField, labelField, selected = [], disabled = '') {
-  const selectedSet = new Set(Array.isArray(selected) ? selected.map(String) : [])
-  const safeName = escapeAttr(name)
-  const controls = (rows || []).map((row) => {
-    const value = String(row[valueField])
-    const labelValue = row[labelField] || row.name || row.email || row.id
-    const id = fieldId(name)
-    return `
-      <label class="check-chip" for="${escapeAttr(id)}">
-        <input id="${escapeAttr(id)}" type="checkbox" name="${safeName}" value="${escapeAttr(value)}" data-multi-name="${safeName}" ${selectedSet.has(value) ? 'checked' : ''} ${disabled}>
-        <span>${escapeHTML(labelValue)}</span>
-      </label>
-    `
-  }).join('')
-  return `
-    <div class="field full" data-field="${safeName}">
-      <div class="field-label">${escapeHTML(label)}</div>
-      <div class="check-grid">${controls || '<span class="muted">ยังไม่มีรายการให้เลือก</span>'}</div>
-      <div class="help">เลือกได้มากกว่า 1 รายการ</div>
-      <div class="field-error" data-field-error="${safeName}"></div>
-    </div>
-  `
-}
-
-function badge(text) {
-  const safe = String(text || '-')
-  const key = safe.toLowerCase().replace(/\s+/g, '_')
-  return `<span class="badge ${escapeAttr(key)}">${escapeHTML(STAGE_LABELS[key] || STATUS_LABELS[key] || safe)}</span>`
-}
-
-function simpleRowsTable(headers, rows) {
-  if (!rows.length) return emptyState('ไม่มีข้อมูล', 'ยังไม่มีรายการในส่วนนี้')
-  return `
-    <div class="table-wrap">
-      <table>
-        <thead><tr>${headers.map((h) => `<th>${escapeHTML(h)}</th>`).join('')}</tr></thead>
         <tbody>
-          ${rows.map((row) => `<tr>${row.map((cell) => `<td>${String(cell).startsWith('<') ? cell : escapeHTML(String(cell ?? '-'))}</td>`).join('')}</tr>`).join('')}
+          ${items.map(item => `
+            <tr>
+              <td><strong>${escapeHTML(caseNo(item))}</strong><br>${escapeHTML(caseTitle(item))}</td>
+              <td>${stageBadge(item.stage)}</td>
+              <td>${escapeHTML(profileName(item.owner_sale))}</td>
+              <td>${escapeHTML(item.contact_email || item.contact_phone || "-")}</td>
+              <td>${escapeHTML(fmtDate(item.next_follow_up_at))}</td>
+              <td>${escapeHTML(fmtDateTime(item.updated_at))}</td>
+              <td><button class="btn ghost" data-action="open-case" data-id="${attr(item.id)}" type="button">ดูประวัติ</button></td>
+            </tr>
+          `).join("")}
         </tbody>
       </table>
     </div>
-  `
+  `;
 }
 
-function viewLabel(mode) {
-  const labels = {
-    board: 'Board',
-    calendar: 'Calendar',
-    list: 'List',
-    table: 'Table',
-    timeline: 'Timeline'
-  }
-  return labels[mode] || mode
-}
-
-function groupRows(rows, field) {
-  return rows.reduce((acc, row) => {
-    const key = row[field] || 'none'
-    if (!acc[key]) acc[key] = []
-    acc[key].push(row)
-    return acc
-  }, {})
-}
-
-function formValues(form) {
-  const formData = new FormData(form)
-  const values = {}
-  for (const [key, value] of formData.entries()) {
-    if (Object.prototype.hasOwnProperty.call(values, key)) {
-      if (!Array.isArray(values[key])) values[key] = [values[key]]
-      values[key].push(value)
-    } else {
-      values[key] = value
-    }
-  }
-
-  form.querySelectorAll('select[multiple]').forEach((select) => {
-    values[select.name] = Array.from(select.selectedOptions).map((option) => option.value).filter(Boolean)
-  })
-
-  const multiNames = Array.from(new Set(Array.from(form.querySelectorAll('[data-multi-name]')).map((input) => input.name)))
-  multiNames.forEach((name) => {
-    values[name] = Array.from(form.querySelectorAll(`[name="${cssEscape(name)}"][data-multi-name]:checked`)).map((input) => input.value).filter(Boolean)
-  })
-
-  return values
-}
-
-
-function setFormBusy(form, busy) {
-  form.dataset.busy = busy ? 'true' : 'false'
-  form.setAttribute('aria-busy', busy ? 'true' : 'false')
-
-  form.querySelectorAll('button').forEach((el) => {
-    if (busy) {
-      el.dataset.wasDisabled = el.disabled ? 'true' : 'false'
-      el.dataset.originalText = el.textContent
-      el.disabled = true
-      if (el.type === 'submit') el.textContent = 'กำลังบันทึก...'
-    } else {
-      el.disabled = el.dataset.wasDisabled === 'true'
-      if (el.dataset.originalText) el.textContent = el.dataset.originalText
-      delete el.dataset.wasDisabled
-      delete el.dataset.originalText
-    }
-  })
-
-  if (!busy) {
-    delete form.dataset.busy
-    form.removeAttribute('aria-busy')
-  }
-}
-
-
-function getStoredSidebarCollapsed() {
-  const stored = localStorage.getItem('crm_sidebar_collapsed')
-  if (stored === null) return true
-  return stored === 'true'
-}
-
-async function withActionBusy(button, actionFn) {
-  if (!button || button.dataset.busy === 'true') return
-  try {
-    button.dataset.busy = 'true'
-    button.dataset.originalText = button.textContent
-    button.disabled = true
-    if (!['‹', '›', '×'].includes(button.textContent.trim())) button.textContent = 'กำลังทำงาน...'
-    return await actionFn()
-  } finally {
-    if (button) {
-      button.disabled = false
-      if (button.dataset.originalText) button.textContent = button.dataset.originalText
-      delete button.dataset.originalText
-      delete button.dataset.busy
-    }
-  }
-}
-
-function accountModuleNames(accountId) {
-  const moduleIds = state.cache.accountModules
-    .filter((row) => row.account_id === accountId)
-    .map((row) => row.module_id)
-  return moduleIds.map((id) => masterName('modules', id)).filter(Boolean)
-}
-
-function cssEscape(value) {
-  if (window.CSS && typeof window.CSS.escape === 'function') {
-    return window.CSS.escape(String(value))
-  }
-  return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&')
-}
-
-
-function createValidationError(message, fieldNames = []) {
-  const error = new Error(message)
-  error.fieldNames = fieldNames
-  return error
-}
-
-function clearFormErrors(form) {
-  form.querySelectorAll('.form-error').forEach((el) => el.remove())
-  form.querySelectorAll('.field-error').forEach((el) => { el.textContent = '' })
-  form.querySelectorAll('[aria-invalid="true"]').forEach((el) => el.removeAttribute('aria-invalid'))
-}
-
-function showFormError(form, error) {
-  clearFormErrors(form)
-  const message = error.message || String(error)
-  const summary = document.createElement('div')
-  summary.className = 'form-error'
-  summary.setAttribute('role', 'alert')
-  summary.textContent = message
-  form.prepend(summary)
-
-  const fieldNames = Array.isArray(error.fieldNames) ? error.fieldNames : []
-  fieldNames.forEach((name) => {
-    const input = form.querySelector(`[name="${cssEscape(name)}"]`)
-    const holder = form.querySelector(`[data-field-error="${cssEscape(name)}"]`)
-    if (input) input.setAttribute('aria-invalid', 'true')
-    if (holder) holder.textContent = message
-  })
-
-  const firstInvalid = fieldNames.length ? form.querySelector(`[name="${cssEscape(fieldNames[0])}"]`) : null
-  if (firstInvalid && typeof firstInvalid.focus === 'function') {
-    firstInvalid.focus()
-  } else {
-    summary.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-}
-
-function emptyState(title, description, actionHTML = '') {
-  return `
-    <div class="empty-state">
-      <div class="empty-icon">∅</div>
-      <h3>${escapeHTML(title)}</h3>
-      <p>${escapeHTML(description || '')}</p>
-      ${actionHTML}
-    </div>
-  `
-}
-
-function daysFromToday(dateValue) {
-  if (!dateValue) return 999
-  const target = new Date(dateValue)
-  const today = startOfToday()
-  return Math.ceil((target - today) / 86400000)
-}
-
-
-function nullIfBlank(value) {
-  const text = String(value ?? '').trim()
-  return text ? text : null
-}
-
-function numberOrNull(value) {
-  const text = String(value ?? '').trim()
-  if (!text) return null
-  const number = Number(text)
-  return Number.isFinite(number) ? number : null
-}
-
-function formatDate(value) {
-  if (!value) return '-'
-  try {
-    return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium' }).format(new Date(value))
-  } catch (_error) {
-    return String(value)
-  }
-}
-
-function formatDateTime(value) {
-  if (!value) return '-'
-  try {
-    return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
-  } catch (_error) {
-    return String(value)
-  }
-}
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function startOfToday() {
-  const date = new Date()
-  date.setHours(0, 0, 0, 0)
-  return date
-}
-
-function datePart(value) {
-  if (!value) return ''
-  return String(value).slice(0, 10)
-}
-
-function timelineWidth(start, end) {
-  if (!start || !end) return 20
-  const s = new Date(start)
-  const e = new Date(end)
-  const days = Math.max(1, Math.round((e - s) / 86400000) + 1)
-  return Math.max(12, Math.min(100, days * 7))
-}
-
-function escapeHTML(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
-}
-
-function escapeAttr(value) {
-  return escapeHTML(value).replaceAll('`', '&#096;')
-}
-
-function toast(message, type = 'success') {
-  const item = document.createElement('div')
-  item.className = `toast ${type}`
-  item.innerHTML = `<span>${escapeHTML(message)}</span><button type="button" aria-label="close">×</button>`
-  item.querySelector('button').addEventListener('click', () => item.remove())
-  toastRoot.appendChild(item)
-  window.setTimeout(() => item.remove(), 6000)
-}
-
-
-/* v1.4.1 overrides: Thai UI, no legacy Account ID, hover sidebar, master delete guard + auth hotfix */
-ROUTES.forEach((route) => {
-  const labels = {
-    dashboard: 'ภาพรวม',
-    'my-work': 'งานของฉัน',
-    leads: 'ลีด',
-    accounts: 'บัญชี',
-    demo: 'เดโม',
-    customers: 'ลูกค้า',
-    tasks: 'งานติดตาม',
-    training: 'อบรม',
-    reports: 'รายงาน',
-    admin: 'ผู้ดูแล'
-  }
-  if (labels[route.key]) route.label = labels[route.key]
-})
-
-MASTER_TABLES.forEach((item) => {
-  const labels = {
-    leadSources: 'แหล่งที่มา',
-    campaigns: 'แคมเปญ',
-    modules: 'สินค้า',
-    contactStatuses: 'สถานะติดต่อ',
-    businessTypes: 'ประเภทธุรกิจ',
-    leadChannels: 'ช่องทาง',
-    lostReasons: 'เหตุผลที่ปิด'
-  }
-  if (labels[item.key]) item.label = labels[item.key]
-})
-
-Object.assign(STAGE_LABELS, {
-  lead: 'ลีด',
-  demo: 'เดโม',
-  customer: 'ลูกค้า',
-  lost: 'ปิดแล้ว'
-})
-
-Object.assign(STATUS_LABELS, {
-  new: 'ใหม่',
-  assigned: 'มอบหมายแล้ว',
-  contacted: 'ติดต่อแล้ว',
-  follow_up: 'ติดตามต่อ',
-  demo_requested: 'ขอเดโม',
-  demo_active: 'กำลังเดโม',
-  customer_active: 'ลูกค้าใช้งาน',
-  lost: 'ปิด Lost',
-  churned: 'เลิกใช้งาน',
-  open: 'เปิด',
-  in_progress: 'กำลังทำ',
-  blocked: 'ติดปัญหา',
-  done: 'เสร็จแล้ว',
-  cancelled: 'ยกเลิก',
-  planned: 'วางแผน',
-  active: 'ใช้งาน',
-  low: 'ต่ำ',
-  medium: 'กลาง',
-  high: 'สูง',
-  urgent: 'ด่วน',
-  risk: 'เสี่ยง',
-  onboarding: 'เริ่มใช้งาน',
-  inactive: 'ไม่ใช้งาน',
-  requested: 'รอเดโม',
-  extended: 'ขยายเวลา',
-  ended: 'จบแล้ว',
-  converted: 'เป็นลูกค้า'
-})
-
-function renderSidebar(activeKey) {
-  const links = ROUTES
-    .filter((item) => hasRole(item.roles))
-    .map((item) => `
-      <button class="nav-link ${activeKey === item.key ? 'active' : ''}" data-nav="${item.key}" type="button" title="${escapeAttr(item.label)}" aria-label="${escapeAttr(item.label)}">
-        <span class="nav-icon" aria-hidden="true">${item.icon}</span><span class="nav-label">${escapeHTML(item.label)}</span>
-      </button>
-    `).join('')
+function renderCaseDrawer() {
+  const item = state.cases.find(c => c.id === state.selectedCaseId);
+  if (!item) return "";
+  const demos = state.demos.filter(demo => demo.case_id === item.id);
+  const customers = state.customers.filter(customer => customer.case_id === item.id);
+  const tasks = state.tasks.filter(task => task.case_id === item.id);
 
   return `
-    <aside class="sidebar" aria-label="เมนูหลัก">
-      <div class="brand">
-        <div class="brand-mark">CRM</div>
-        <div class="brand-copy">
-          <span class="brand-title">ระบบ CRM ภายใน</span>
-          <span class="brand-version">v${APP_VERSION}</span>
-        </div>
-      </div>
-      <nav class="nav">${links}</nav>
-      <div class="sidebar-footer">
-        <div class="nav-label">${escapeHTML(roleLabel(state.profile.role))}</div>
-        <div class="nav-label">${escapeHTML(state.profile.display_name || state.profile.email || '')}</div>
-      </div>
-    </aside>
-  `
-}
-
-function renderTopbar(title) {
-  return `
-    <header class="topbar">
-      <div>
-        <h1>${escapeHTML(title)}</h1>
-        <div class="topbar-meta">อัปเดต: ${state.lastSyncedAt ? formatDateTime(state.lastSyncedAt) : '-'}</div>
-      </div>
-      <div class="user-chip">
-        <span>${escapeHTML(state.profile.display_name || state.profile.email || '')}</span>
-        <span class="role-pill">${escapeHTML(roleLabel(state.profile.role))}</span>
-        <button class="btn small" type="button" data-action="refresh-data">รีเฟรช</button>
-        <button class="btn small" type="button" data-action="logout">ออกจากระบบ</button>
-      </div>
-    </header>
-  `
-}
-
-function roleLabel(role) {
-  const labels = {
-    pending: 'รอกำหนดสิทธิ์',
-    admin: 'ผู้ดูแล',
-    mkt: 'MKT',
-    sale: 'Sale',
-    cs: 'CS',
-    manager: 'ผู้จัดการ'
-  }
-  return labels[role] || role || '-'
-}
-
-function viewLabel(mode) {
-  const labels = {
-    board: 'บอร์ด',
-    calendar: 'ปฏิทิน',
-    list: 'รายการ',
-    table: 'ตาราง',
-    timeline: 'ไทม์ไลน์'
-  }
-  return labels[mode] || mode
-}
-
-function renderDashboard() {
-  const accounts = state.cache.accounts
-  const leads = accounts.filter((a) => a.lifecycle_stage === 'lead')
-  const demos = accounts.filter((a) => a.lifecycle_stage === 'demo')
-  const customers = accounts.filter((a) => a.lifecycle_stage === 'customer')
-  const lost = accounts.filter((a) => a.lifecycle_stage === 'lost')
-  const tasks = state.cache.tasks
-  const overdue = tasks.filter((t) => t.status !== 'done' && t.due_at && new Date(t.due_at) < startOfToday())
-  const todayTrainings = state.cache.trainings.filter((t) => t.training_date === todayISO())
-
-  return `
-    <div class="page-header">
-      <div><h2>ภาพรวม</h2></div>
-      <div class="actions">
-        <button class="btn primary" type="button" data-nav="my-work">งานของฉัน</button>
-        <button class="btn" type="button" data-action="print">พิมพ์</button>
-      </div>
-    </div>
-    <div class="grid grid-4">
-      ${renderKpi('ลีด', leads.length, '')}
-      ${renderKpi('เดโม', demos.length, '')}
-      ${renderKpi('ลูกค้า', customers.length, '')}
-      ${renderKpi('ปิดแล้ว', lost.length, '')}
-    </div>
-    <div class="grid grid-3" style="margin-top:16px">
-      ${renderKpi('งานเปิด', tasks.filter((t) => !['done', 'cancelled'].includes(t.status)).length, '')}
-      ${renderKpi('เลยกำหนด', overdue.length, '')}
-      ${renderKpi('อบรมวันนี้', todayTrainings.length, '')}
-    </div>
-    <div class="grid grid-2" style="margin-top:16px">
-      <div class="card"><h3>เส้นทางลีด</h3>${renderMiniJourney()}</div>
-      <div class="card"><h3>งานเร่งด่วน</h3>${renderTaskList(overdue.concat(tasks.filter((t) => t.status !== 'done')).slice(0, 6), true)}</div>
-    </div>
-  `
-}
-
-function renderLeads() {
-  const leadJourneys = state.cache.accounts
-  const filter = getFilter('leads')
-  if (filter.stage === undefined || filter.stage === null) filter.stage = 'lead'
-
-  const tabs = [
-    ['', 'ทั้งหมด'],
-    ['lead', 'ลีดเปิด'],
-    ['demo', 'เดโม'],
-    ['customer', 'เป็นลูกค้า'],
-    ['lost', 'ปิดแล้ว']
-  ]
-
-  return `
-    <div class="page-header">
-      <div><h2>ลีด</h2></div>
-      <div class="actions">
-        ${hasRole([ROLES.ADMIN, ROLES.MKT]) ? `<button class="btn primary" type="button" data-open-modal="create-mkt-lead">+ ลีด MKT</button>` : ''}
-        ${hasRole([ROLES.ADMIN, ROLES.SALE]) ? `<button class="btn primary" type="button" data-open-modal="create-sales-lead">+ ลีด Sale</button>` : ''}
-      </div>
-    </div>
-    <div class="tabs lead-tabs" role="tablist" aria-label="ตัวกรองลีด">
-      ${tabs.map(([stage, label]) => `
-        <button class="tab ${String(filter.stage || '') === String(stage) ? 'active' : ''}" type="button" data-lead-tab="${escapeAttr(stage)}">${escapeHTML(label)}</button>
-      `).join('')}
-    </div>
-    <div class="card">
-      <div class="page-header compact-header">
-        <div><h3>รายการลีด</h3></div>
-        ${renderViewSwitcher('leads')}
-      </div>
-      ${renderAccountsCollection(leadJourneys, 'leads')}
-    </div>
-  `
-}
-
-function renderAccounts() {
-  return `
-    <div class="page-header">
-      <div><h2>บัญชี</h2></div>
-      ${renderViewSwitcher('accounts')}
-    </div>
-    ${renderAccountsCollection(state.cache.accounts, 'accounts')}
-  `
-}
-
-function renderDemo() {
-  return `
-    <div class="page-header">
-      <div><h2>เดโม</h2></div>
-      ${renderViewSwitcher('demo')}
-    </div>
-    ${renderAccountsCollection(state.cache.accounts.filter((a) => a.lifecycle_stage === 'demo'), 'demo')}
-  `
-}
-
-function renderCustomers() {
-  return `
-    <div class="page-header">
-      <div><h2>ลูกค้า</h2></div>
-      ${renderViewSwitcher('customers')}
-    </div>
-    ${renderAccountsCollection(state.cache.accounts.filter((a) => a.lifecycle_stage === 'customer'), 'customers')}
-  `
-}
-
-function renderTasks() {
-  return `
-    <div class="page-header">
-      <div><h2>งานติดตาม</h2></div>
-      ${renderViewSwitcher('tasks')}
-    </div>
-    <div class="card">${renderTaskCollection(state.cache.tasks, 'tasks')}</div>
-  `
-}
-
-function renderTraining() {
-  return `
-    <div class="page-header">
-      <div><h2>อบรม</h2></div>
-      ${renderViewSwitcher('training')}
-    </div>
-    <div class="card">${renderTrainingCollection(state.cache.trainings, 'training')}</div>
-  `
-}
-
-function renderReports() {
-  const accounts = state.cache.accounts
-  const leadSources = state.cache.leadSources.map((source) => [source.name, accounts.filter((a) => a.lead_source_id === source.id).length])
-  const sales = state.cache.profiles.filter((p) => p.role === ROLES.SALE).map((sale) => {
-    const owned = accounts.filter((a) => a.sale_owner_id === sale.id)
-    return [displayUser(sale.id), owned.length, owned.filter((a) => a.lifecycle_stage === 'customer').length, owned.filter((a) => a.lifecycle_stage === 'lost').length]
-  })
-
-  return `
-    <div class="page-header">
-      <div><h2>รายงาน</h2></div>
-      <div class="actions"><button class="btn" type="button" data-action="print">พิมพ์</button></div>
-    </div>
-    <div class="grid grid-2">
-      <div class="card"><h3>ตามแหล่งที่มา</h3>${simpleRowsTable(['แหล่งที่มา', 'จำนวน'], leadSources)}</div>
-      <div class="card"><h3>ผลงาน Sale</h3>${simpleRowsTable(['Sale', 'บัญชี', 'ชนะ', 'ปิด'], sales)}</div>
-    </div>
-    <div class="card" style="margin-top:16px"><h3>เส้นทางลีด</h3>${renderMiniJourney()}</div>
-  `
-}
-
-function renderAdmin() {
-  return `
-    <div class="page-header"><div><h2>ผู้ดูแล</h2></div></div>
-    <div class="grid">
-      ${renderProfilesAdmin()}
-      ${MASTER_TABLES.map(renderMasterAdmin).join('')}
-    </div>
-  `
-}
-
-function renderProfilesAdmin() {
-  const rows = state.cache.profiles.map((profile) => `
-    <tr>
-      <td>${escapeHTML(profile.email || '')}</td>
-      <td><input value="${escapeAttr(profile.display_name || '')}" data-profile-field="display_name" data-profile-id="${profile.id}"></td>
-      <td>
-        <select data-profile-field="role" data-profile-id="${profile.id}">
-          ${['pending', 'admin', 'mkt', 'sale', 'cs', 'manager'].map((role) => `<option value="${role}" ${profile.role === role ? 'selected' : ''}>${roleLabel(role)}</option>`).join('')}
-        </select>
-      </td>
-      <td>
-        <select data-profile-field="is_active" data-profile-id="${profile.id}">
-          <option value="true" ${profile.is_active ? 'selected' : ''}>ใช้งาน</option>
-          <option value="false" ${!profile.is_active ? 'selected' : ''}>ปิดใช้งาน</option>
-        </select>
-      </td>
-      <td><button class="btn small primary" type="button" data-action="save-profile" data-id="${profile.id}">บันทึก</button></td>
-    </tr>
-  `).join('')
-
-  return `
-    <div class="card">
-      <h3>ผู้ใช้ / สิทธิ์</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>อีเมล</th><th>ชื่อ</th><th>สิทธิ์</th><th>สถานะ</th><th></th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5" class="empty">ยังไม่มีผู้ใช้</td></tr>'}</tbody>
-        </table>
-      </div>
-    </div>
-  `
-}
-
-function renderMasterAdmin(config) {
-  const rows = (state.cache[config.key] || []).map((row) => {
-    const usageCount = masterUsageCount(config.key, row.id)
-    const canDelete = usageCount === 0
-    return `
-      <tr>
-        <td>${escapeHTML(row[config.nameField] || '')}</td>
-        <td>${row.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}</td>
-        <td>${usageCount}</td>
-        <td>
-          <div class="actions">
-            <button class="btn small" type="button" data-action="toggle-master" data-table="${config.table}" data-id="${row.id}" data-active="${row.is_active ? 'false' : 'true'}">${row.is_active ? 'ปิดใช้งาน' : 'เปิดใช้'}</button>
-            ${canDelete ? `<button class="btn small danger" type="button" data-action="delete-master" data-table="${config.table}" data-cache-key="${config.key}" data-id="${row.id}">ลบ</button>` : ''}
+    <div class="drawer-backdrop" data-action="close-drawer">
+      <aside class="drawer" role="dialog" aria-modal="true" aria-label="Case history">
+        <div class="drawer-header">
+          <div>
+            <h2 class="page-title">${escapeHTML(caseNo(item))} ${escapeHTML(caseTitle(item))}</h2>
+            <p class="page-subtitle">${escapeHTML(item.contact_email || "")} ${escapeHTML(item.contact_phone || "")}</p>
           </div>
-        </td>
-      </tr>
-    `
-  }).join('')
+          <button class="btn ghost" data-action="close-drawer" type="button">ปิด</button>
+        </div>
 
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>${escapeHTML(config.label)}</h3>
-        <button class="btn small primary" type="button" data-open-modal="create-master" data-table="${escapeAttr(config.table)}" data-name-field="${escapeAttr(config.nameField)}" data-label="${escapeAttr(config.label)}">+ เพิ่ม</button>
-      </div>
-      <div class="table-wrap" style="margin-top:12px">
-        <table>
-          <thead><tr><th>ชื่อ</th><th>สถานะ</th><th>ถูกใช้</th><th></th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="4" class="empty">ยังไม่มีข้อมูล</td></tr>'}</tbody>
-        </table>
-      </div>
+        <section class="grid">
+          <div class="card">
+            <h3>ข้อมูลหลัก</h3>
+            <p>${stageBadge(item.stage)} ${item.lost_reason ? badge(`Lost: ${item.lost_reason}`, "danger") : ""} ${item.churn_reason ? badge(`Churn: ${item.churn_reason}`, "danger") : ""}</p>
+            <p><strong>Sale:</strong> ${escapeHTML(profileName(item.owner_sale))}</p>
+            <p><strong>Need:</strong> ${escapeHTML(item.current_need || item.qualification_notes || "-")}</p>
+          </div>
+
+          <div class="card">
+            <h3>Demo History</h3>
+            ${demos.length ? demos.map(demo => `
+              <div class="timeline-item">
+                <strong>${escapeHTML(DEMO_STATUS_LABELS[demo.demo_status] || demo.demo_status)}: ${escapeHTML(fmtDate(demo.start_date))} - ${escapeHTML(fmtDate(demo.end_date))}</strong>
+                <span>${escapeHTML(demo.requirements || demo.demo_result || demo.notes || "-")}</span>
+              </div>
+            `).join("") : `<div class="empty">ยังไม่มี Demo history</div>`}
+          </div>
+
+          <div class="card">
+            <h3>Customer Snapshot</h3>
+            ${customers.length ? customers.map(customer => `
+              <p>${riskBadge(customer.risk_level)} Plan: ${escapeHTML(customer.plan_name || "-")} / Billing: ${escapeHTML(customer.billing_cycle || "-")}</p>
+              <p>Health: ${escapeHTML(customer.health_status || "-")} / Usage: ${escapeHTML(customer.usage_status || "-")} / Training: ${escapeHTML(customer.training_status || "-")}</p>
+            `).join("") : `<div class="empty">ยังไม่มีข้อมูล Customer</div>`}
+          </div>
+
+          <div class="card">
+            <h3>Task</h3>
+            ${tasks.length ? tasks.map(task => `<p>${badge(TASK_STATUS_LABELS[task.status] || task.status)} ${escapeHTML(task.title)} — ${escapeHTML(fmtDate(task.due_date))}</p>`).join("") : `<div class="empty">ยังไม่มี Task</div>`}
+          </div>
+
+          <div class="card">
+            <h3>Activity Log</h3>
+            <div class="timeline">
+              ${state.activities.length ? state.activities.map(activity => `
+                <div class="timeline-item">
+                  <strong>${escapeHTML(activity.title || activity.activity_type)}</strong>
+                  <span>${escapeHTML(fmtDateTime(activity.created_at))} โดย ${escapeHTML(profileName(activity.actor))}</span>
+                  <span>${escapeHTML(activity.description || "")}</span>
+                </div>
+              `).join("") : `<div class="empty">ยังไม่มี activity</div>`}
+            </div>
+          </div>
+        </section>
+      </aside>
     </div>
-  `
+  `;
 }
 
-document.addEventListener('click', async (event) => {
-  const deleteBtn = event.target.closest('[data-action="delete-master"]')
-  if (!deleteBtn) return
-  event.preventDefault()
-  event.stopImmediatePropagation()
-  await withActionBusy(deleteBtn, () => deleteMaster(deleteBtn.dataset.table, deleteBtn.dataset.cacheKey, deleteBtn.dataset.id))
-}, true)
+function getFormData(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+  return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value === "" ? null : value]));
+}
 
-async function deleteMaster(table, cacheKey, id) {
-  const usage = masterUsageCount(cacheKey, id)
-  if (usage > 0) {
-    toast('รายการนี้ถูกใช้งานแล้ว ให้ปิดใช้งานแทน', 'warning')
-    return
+async function withButtonLoading(button, fn) {
+  if (!button) return fn();
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "กำลังบันทึก...";
+  try {
+    return await fn();
+  } finally {
+    button.disabled = false;
+    button.textContent = oldText;
   }
-  if (!confirm('ลบรายการนี้?')) return
-  const { error } = await state.client.from(table).delete().eq('id', id)
-  if (error) throw error
-  await refreshData()
-  toast('ลบรายการแล้ว', 'success')
 }
 
-function masterUsageCount(cacheKey, id) {
-  if (!id) return 0
-  if (cacheKey === 'leadSources') return state.cache.accounts.filter((row) => row.lead_source_id === id).length
-  if (cacheKey === 'leadChannels') return state.cache.accounts.filter((row) => row.lead_channel_id === id).length
-  if (cacheKey === 'campaigns') return state.cache.accounts.filter((row) => row.campaign_id === id).length
-  if (cacheKey === 'businessTypes') return state.cache.accounts.filter((row) => row.business_type_id === id).length
-  if (cacheKey === 'contactStatuses') return state.cache.accounts.filter((row) => row.contact_status_id === id).length
-  if (cacheKey === 'lostReasons') return state.cache.accounts.filter((row) => row.lost_reason_id === id).length
-  if (cacheKey === 'modules') return state.cache.accountModules.filter((row) => row.module_id === id).length
-  return 0
+async function createActivity(caseId, activityType, title, description, fromStage = null, toStage = null, metadata = {}) {
+  const { error } = await supabase.from("case_activities").insert({
+    case_id: caseId,
+    actor_id: currentUserId(),
+    activity_type: activityType,
+    title,
+    description,
+    from_stage: fromStage,
+    to_stage: toStage,
+    metadata
+  });
+  if (error) throw error;
 }
 
-function modalTitle(modal) {
-  const map = {
-    'create-mkt-lead': 'เพิ่มลีด MKT',
-    'create-sales-lead': 'เพิ่มลีด Sale',
-    'add-contact': 'เพิ่มผู้ติดต่อ',
-    'add-activity': 'เพิ่มบันทึก',
-    'request-demo': 'ขอเดโม',
-    'edit-demo': 'แก้ไขเดโม',
-    'add-demo-user': 'เพิ่มผู้ใช้เดโม',
-    'add-training': 'เพิ่มอบรม',
-    'add-training-participant': 'เพิ่มผู้เข้าร่วม',
-    'customer-profile': 'ข้อมูลลูกค้า',
-    'add-task': 'เพิ่มงาน',
-    'mark-lost': 'ปิด Lost',
-    'create-master': `เพิ่ม ${modal.label || 'ข้อมูล'}`,
-    'account-overview': 'แก้ไขบัญชี'
-  }
-  return map[modal.type] || 'รายละเอียด'
+async function handleLogin(form, button) {
+  const data = getFormData(form);
+  await withButtonLoading(button, async () => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: data.email,
+      password: data.password
+    });
+    if (error) throw error;
+  });
 }
 
-function modalSubtitle(modal) {
-  const account = modal.accountId ? findAccount(modal.accountId) : null
-  if (account) return accountTitle(account)
-  return ''
+async function handleSaveConfig(form, button) {
+  const data = getFormData(form);
+  await withButtonLoading(button, async () => {
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({
+      supabaseUrl: data.supabaseUrl,
+      supabaseAnonKey: data.supabaseAnonKey
+    }));
+    showToast("บันทึก config แล้ว");
+    await boot();
+  });
 }
 
-function renderMktLeadForm() {
-  const today = todayISO()
-  return `
-    <form class="form-grid modal-form" data-form="create-mkt-lead" novalidate>
-      ${readonlyDisplay('running_no_preview', 'เลข MKT', 'อัตโนมัติ')}
-      ${readonlyDisplay('source_type_preview', 'ที่มา', 'Marketing')}
-      ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', true)}
-      ${selectField('campaign_id', 'แคมเปญ', state.cache.campaigns, 'id', 'name', false)}
-      ${readonlyDisplay('created_at_preview', 'วันที่บันทึก', today)}
-      ${inputField('contact_name', 'ผู้ติดต่อ', 'text', false)}
-      ${inputField('phone', 'เบอร์หลัก', 'text', false)}
-      ${inputField('email', 'อีเมล', 'email', false)}
-      ${inputField('company_name', 'บริษัท', 'text', false)}
-      ${multiSelectField('module_ids', 'สินค้า', state.cache.modules, 'id', 'module_name')}
-      ${inputField('cars_estimate', 'จำนวนรถ', 'number', false)}
-      ${readonlyDisplay('sale_assignment_preview', 'Sale ที่ได้รับงาน', 'แสดงหลังบันทึก')}
-      <div class="field full" data-field="initial_note">
-        <label for="mkt-initial-note">ข้อมูลลีด</label>
-        <textarea id="mkt-initial-note" name="initial_note"></textarea>
-        <div class="field-error" data-field-error="initial_note"></div>
-      </div>
-      <div class="full modal-actions">
-        <button class="btn" type="button" data-close-modal>ยกเลิก</button>
-        <button class="btn primary" type="submit">บันทึก</button>
-      </div>
-    </form>
-  `
+async function handleCreateLead(form, button) {
+  const data = getFormData(form);
+  const ownerSaleId = data.owner_sale_id || data.default_sale_id;
+  if (!ownerSaleId) throw new Error("กรุณาเลือก Sale Owner");
+
+  await withButtonLoading(button, async () => {
+    const payload = {
+      stage: "lead",
+      source_team: data.source_team || role(),
+      source_channel: data.source_channel,
+      company_name: data.company_name,
+      contact_name: data.contact_name,
+      contact_email: data.contact_email,
+      contact_phone: data.contact_phone,
+      interested_product: data.interested_product,
+      interest_level: data.interest_level,
+      qualification_notes: data.qualification_notes,
+      next_follow_up_at: data.next_follow_up_at,
+      owner_sale_id: ownerSaleId,
+      created_by: currentUserId(),
+      updated_by: currentUserId()
+    };
+
+    const { data: inserted, error } = await supabase
+      .from("crm_cases")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    await createActivity(inserted.id, "lead_created", "สร้าง Lead", `สร้าง Lead โดย ${ROLE_LABELS[role()] || role()}`);
+    showToast("สร้าง Lead แล้ว");
+    form.reset();
+    await refreshData();
+  });
 }
 
-function renderSaleLeadForm() {
-  return `
-    <form class="form-grid modal-form" data-form="create-sales-lead" novalidate>
-      ${inputField('company_name', 'บริษัท', 'text', false)}
-      ${inputField('contact_name', 'ผู้ติดต่อ', 'text', false)}
-      ${inputField('position', 'ตำแหน่ง', 'text', false)}
-      ${inputField('phone', 'เบอร์หลัก', 'text', false)}
-      ${inputField('phone_2', 'เบอร์ 2', 'text', false)}
-      ${inputField('phone_3', 'เบอร์ 3', 'text', false)}
-      ${inputField('email', 'อีเมล', 'email', false)}
-      ${inputField('email_2', 'อีเมล 2', 'email', false)}
-      ${inputField('tax_id', 'เลขผู้เสียภาษี', 'text', false)}
-      <div class="field full" data-field="address">
-        <label for="sale-address">ที่อยู่</label>
-        <textarea id="sale-address" name="address"></textarea>
-        <div class="field-error" data-field-error="address"></div>
-      </div>
-      ${selectField('business_type_id', 'ธุรกิจ', state.cache.businessTypes, 'id', 'name', false)}
-      <div class="field full" data-field="initial_note">
-        <label for="sale-initial-note">รายละเอียด</label>
-        <textarea id="sale-initial-note" name="initial_note"></textarea>
-        <div class="field-error" data-field-error="initial_note"></div>
-      </div>
-      ${inputField('cars_estimate', 'จำนวนรถ', 'number', false, '0')}
-      ${multiSelectField('module_ids', 'สินค้า', state.cache.modules, 'id', 'module_name')}
-      ${inputField('current_gps_provider', 'GPS ปัจจุบัน', 'text', false)}
-      <div class="field full" data-field="note">
-        <label for="sale-note">หมายเหตุ</label>
-        <textarea id="sale-note" name="note"></textarea>
-        <div class="field-error" data-field-error="note"></div>
-      </div>
-      ${readonlyDisplay('sale_email_preview', 'อีเมล Sale', state.profile?.email || state.user?.email || '-')}
-      ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', true)}
-      <div class="full modal-actions">
-        <button class="btn" type="button" data-close-modal>ยกเลิก</button>
-        <button class="btn primary" type="submit">บันทึก</button>
-      </div>
-    </form>
-  `
-}
+async function sendLeadToDemo(caseId) {
+  const item = state.cases.find(c => c.id === caseId);
+  if (!item) return;
 
-async function createMktLead(form) {
-  const values = formValues(form)
-  ensureLeadMinimum(values)
-  ensureRequired(values, 'lead_channel_id', 'ต้องเลือกช่องทาง', ['lead_channel_id'])
-  const { data, error } = await state.client.rpc('create_mkt_lead', {
-    p_company_name: nullIfBlank(values.company_name),
-    p_contact_name: nullIfBlank(values.contact_name),
-    p_phone: nullIfBlank(values.phone),
-    p_email: nullIfBlank(values.email),
-    p_lead_source_id: null,
-    p_lead_channel_id: nullIfBlank(values.lead_channel_id),
-    p_campaign_id: nullIfBlank(values.campaign_id),
-    p_initial_note: nullIfBlank(values.initial_note),
-    p_cars_estimate: numberOrNull(values.cars_estimate),
-    p_module_ids: values.module_ids || []
-  })
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  const account = state.cache.accounts.find((item) => item.id === data)
-  toast(`สร้างลีดแล้ว เลข MKT: ${account?.running_no || '-'} / Sale: ${displayUser(account?.sale_owner_id)}`, 'success')
-}
+  const requirements = window.prompt("รายละเอียด requirement สำหรับ Demo", item.current_need || item.qualification_notes || "");
+  if (requirements === null) return;
 
-async function createSalesLead(form) {
-  const values = formValues(form)
-  ensureLeadMinimum(values)
-  ensureRequired(values, 'lead_channel_id', 'ต้องเลือกช่องทาง', ['lead_channel_id'])
-  const { data, error } = await state.client.rpc('create_sales_lead', {
-    p_company_name: nullIfBlank(values.company_name),
-    p_contact_name: nullIfBlank(values.contact_name),
-    p_position: nullIfBlank(values.position),
-    p_phone: nullIfBlank(values.phone),
-    p_phone_2: nullIfBlank(values.phone_2),
-    p_phone_3: nullIfBlank(values.phone_3),
-    p_email: nullIfBlank(values.email),
-    p_email_2: nullIfBlank(values.email_2),
-    p_tax_id: nullIfBlank(values.tax_id),
-    p_address: nullIfBlank(values.address),
-    p_business_type_id: nullIfBlank(values.business_type_id),
-    p_lead_channel_id: nullIfBlank(values.lead_channel_id),
-    p_initial_note: nullIfBlank(values.initial_note),
-    p_cars_estimate: numberOrNull(values.cars_estimate),
-    p_current_gps_provider: nullIfBlank(values.current_gps_provider),
-    p_module_ids: values.module_ids || []
-  })
-  if (error) throw error
+  const startDate = window.prompt("วันเริ่ม Demo (YYYY-MM-DD)", todayISO());
+  if (startDate === null) return;
 
-  if (nullIfBlank(values.note)) {
-    const { error: noteError } = await state.client.from(TABLES.activities).insert({
-      account_id: data,
-      activity_type: 'sale_update',
-      title: 'หมายเหตุจาก Sale',
-      content: values.note,
-      created_by: state.user.id
+  const endDate = window.prompt("วันสิ้นสุด Demo (YYYY-MM-DD)", daysFromNowISO(7));
+  if (endDate === null) return;
+
+  const { error: updateError } = await supabase
+    .from("crm_cases")
+    .update({
+      stage: "demo",
+      current_need: requirements,
+      updated_by: currentUserId()
     })
-    if (noteError) throw noteError
-  }
+    .eq("id", caseId);
 
-  form.reset()
-  await refreshData()
-  const account = state.cache.accounts.find((item) => item.id === data)
-  toast(`สร้างลีดแล้ว / Sale: ${displayUser(account?.sale_owner_id || state.user.id)}`, 'success')
+  if (updateError) throw updateError;
+
+  const { error: demoError } = await supabase
+    .from("demo_sessions")
+    .insert({
+      case_id: caseId,
+      demo_status: "queued",
+      start_date: startDate || todayISO(),
+      end_date: endDate || daysFromNowISO(7),
+      requirements,
+      created_by: currentUserId()
+    });
+
+  if (demoError) throw demoError;
+
+  await createActivity(caseId, "sent_to_demo", "ส่งเข้า Demo Queue", requirements, item.stage, "demo");
+  showToast("ส่งเข้า Demo Queue แล้ว");
+  await refreshData();
 }
 
-function ensureLeadMinimum(values) {
-  const hasMinimum = [values.company_name, values.contact_name, values.phone, values.phone_2, values.phone_3, values.email, values.email_2, values.initial_note]
-    .some((value) => String(value || '').trim())
-  if (!hasMinimum) {
-    throw createValidationError('กรอกข้อมูลอย่างน้อย 1 อย่าง', ['company_name', 'contact_name', 'phone', 'email', 'initial_note'])
+async function convertToCustomer(caseId) {
+  const item = state.cases.find(c => c.id === caseId);
+  if (!item) return;
+
+  const planName = window.prompt("Plan / Package ที่ลูกค้าใช้", "");
+  if (planName === null) return;
+
+  const billingCycle = window.prompt("รอบบิล เช่น monthly, yearly", "monthly");
+  if (billingCycle === null) return;
+
+  const today = todayISO();
+
+  const { error: updateError } = await supabase
+    .from("crm_cases")
+    .update({
+      stage: "customer",
+      converted_to_customer_at: new Date().toISOString(),
+      updated_by: currentUserId()
+    })
+    .eq("id", caseId);
+
+  if (updateError) throw updateError;
+
+  const { error: customerError } = await supabase
+    .from("customer_profiles")
+    .upsert({
+      case_id: caseId,
+      customer_since: today,
+      plan_name: planName,
+      billing_cycle: billingCycle,
+      risk_level: "low",
+      health_status: "new",
+      usage_status: "not_started",
+      training_status: "pending"
+    }, { onConflict: "case_id" });
+
+  if (customerError) throw customerError;
+
+  const activeDemo = state.demos.find(d => d.case_id === caseId && ["queued", "scheduled", "in_progress"].includes(d.demo_status));
+  if (activeDemo) {
+    await supabase
+      .from("demo_sessions")
+      .update({ demo_status: "converted", actual_end_at: new Date().toISOString(), demo_result: "converted_to_customer" })
+      .eq("id", activeDemo.id);
   }
+
+  await createActivity(caseId, "converted_to_customer", "เปลี่ยนเป็น Customer", `Plan: ${planName || "-"}, Billing: ${billingCycle || "-"}`, item.stage, "customer");
+  showToast("เปลี่ยนเป็น Customer แล้ว");
+  await refreshData();
 }
 
-async function saveAccountOverview(form) {
-  const accountId = form.dataset.accountId
-  const values = formValues(form)
+async function closeAsLost(caseId) {
+  const item = state.cases.find(c => c.id === caseId);
+  if (!item) return;
+
+  const reason = window.prompt("เหตุผล Lost", item.lost_reason || "");
+  if (!reason) return;
+
+  const { error } = await supabase
+    .from("crm_cases")
+    .update({
+      stage: "lost",
+      lost_reason: reason,
+      updated_by: currentUserId()
+    })
+    .eq("id", caseId);
+
+  if (error) throw error;
+
+  await supabase
+    .from("demo_sessions")
+    .update({ demo_status: "lost", actual_end_at: new Date().toISOString(), demo_result: reason })
+    .eq("case_id", caseId)
+    .in("demo_status", ["queued", "scheduled", "in_progress"]);
+
+  await createActivity(caseId, "closed_lost", "ปิดเป็น Lost", reason, item.stage, "lost");
+  showToast("ปิด Lost แล้ว");
+  await refreshData();
+}
+
+async function markChurn(caseId) {
+  const item = state.cases.find(c => c.id === caseId);
+  if (!item) return;
+
+  const reason = window.prompt("เหตุผล Churn", item.churn_reason || "");
+  if (!reason) return;
+
+  const { error } = await supabase
+    .from("crm_cases")
+    .update({
+      stage: "churn",
+      churn_reason: reason,
+      churned_at: new Date().toISOString(),
+      updated_by: currentUserId()
+    })
+    .eq("id", caseId);
+
+  if (error) throw error;
+
+  await createActivity(caseId, "marked_churn", "เปลี่ยนเป็น Churn", reason, item.stage, "churn");
+  showToast("บันทึก Churn แล้ว");
+  await refreshData();
+}
+
+async function editDemo(demoId) {
+  const demo = state.demos.find(d => d.id === demoId);
+  if (!demo) return;
+
+  const status = window.prompt("สถานะ Demo: queued, scheduled, in_progress, completed, cancelled", demo.demo_status || "scheduled");
+  if (status === null) return;
+
+  const result = window.prompt("ผลการเดโม่ / หมายเหตุ", demo.demo_result || demo.notes || "");
+  if (result === null) return;
+
+  const nextFollowUp = window.prompt("วันติดตามต่อ (YYYY-MM-DD)", demo.next_follow_up_at || daysFromNowISO(3));
+  if (nextFollowUp === null) return;
+
+  const { error } = await supabase
+    .from("demo_sessions")
+    .update({
+      demo_status: status,
+      demo_result: result,
+      notes: result,
+      next_follow_up_at: nextFollowUp || null,
+      actual_end_at: ["completed", "cancelled", "lost", "converted"].includes(status) ? new Date().toISOString() : demo.actual_end_at
+    })
+    .eq("id", demoId);
+
+  if (error) throw error;
+
+  await createActivity(demo.case_id, "demo_updated", "อัปเดต Demo", `${status}: ${result || "-"}`);
+  showToast("อัปเดต Demo แล้ว");
+  await refreshData();
+}
+
+async function editCustomer(customerId) {
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return;
+
+  const riskLevel = window.prompt("Risk: low, medium, high", customer.risk_level || "low");
+  if (riskLevel === null) return;
+
+  const healthStatus = window.prompt("Health status", customer.health_status || "");
+  if (healthStatus === null) return;
+
+  const usageStatus = window.prompt("Usage status", customer.usage_status || "");
+  if (usageStatus === null) return;
+
+  const trainingStatus = window.prompt("Training status", customer.training_status || "pending");
+  if (trainingStatus === null) return;
+
+  const { error } = await supabase
+    .from("customer_profiles")
+    .update({
+      risk_level: riskLevel,
+      health_status: healthStatus,
+      usage_status: usageStatus,
+      training_status: trainingStatus
+    })
+    .eq("id", customerId);
+
+  if (error) throw error;
+
+  await createActivity(customer.case_id, "customer_updated", "อัปเดต Customer", `Risk: ${riskLevel}, Health: ${healthStatus}, Usage: ${usageStatus}`);
+  showToast("อัปเดต Customer แล้ว");
+  await refreshData();
+}
+
+async function createTaskForCase(caseId) {
+  const title = window.prompt("หัวข้อ Task", "");
+  if (!title) return;
+
+  const dueDate = window.prompt("Due date (YYYY-MM-DD)", daysFromNowISO(2));
+  if (dueDate === null) return;
+
+  const assignedTo = window.prompt("User ID ผู้รับผิดชอบ (ว่าง = ตัวเอง)", currentUserId());
+  if (assignedTo === null) return;
+
+  const { error } = await supabase
+    .from("tasks")
+    .insert({
+      case_id: caseId,
+      title,
+      task_type: "follow_up",
+      status: "open",
+      priority: "normal",
+      due_date: dueDate || null,
+      assigned_to: assignedTo || currentUserId(),
+      created_by: currentUserId()
+    });
+
+  if (error) throw error;
+
+  await createActivity(caseId, "task_created", "สร้าง Task", title);
+  showToast("สร้าง Task แล้ว");
+  await refreshData();
+}
+
+async function saveTask(form, button) {
+  const data = getFormData(form);
+
+  await withButtonLoading(button, async () => {
+    const { error } = await supabase
+      .from("tasks")
+      .insert({
+        case_id: data.case_id,
+        title: data.title,
+        task_type: data.task_type,
+        status: "open",
+        priority: data.priority,
+        due_date: data.due_date,
+        assigned_to: data.assigned_to,
+        created_by: currentUserId(),
+        notes: data.notes
+      });
+
+    if (error) throw error;
+
+    await createActivity(data.case_id, "task_created", "สร้าง Task", data.title);
+    showToast("สร้าง Task แล้ว");
+    form.reset();
+    await refreshData();
+  });
+}
+
+async function updateTaskStatus(taskId, status) {
+  const task = state.tasks.find(t => t.id === taskId);
   const payload = {
-    company_name: nullIfBlank(values.company_name),
-    short_name: nullIfBlank(values.short_name),
-    tax_id: nullIfBlank(values.tax_id),
-    address: nullIfBlank(values.address),
-    cars_estimate: numberOrNull(values.cars_estimate),
-    lead_channel_id: nullIfBlank(values.lead_channel_id),
-    lead_source_id: nullIfBlank(values.lead_source_id),
-    campaign_id: nullIfBlank(values.campaign_id),
-    business_type_id: nullIfBlank(values.business_type_id),
-    contact_status_id: nullIfBlank(values.contact_status_id),
-    current_gps_provider: nullIfBlank(values.current_gps_provider),
-    product_interest: nullIfBlank(values.product_interest)
+    status,
+    completed_at: status === "done" ? new Date().toISOString() : null
+  };
+
+  const { error } = await supabase.from("tasks").update(payload).eq("id", taskId);
+  if (error) throw error;
+
+  if (task?.case_id) {
+    await createActivity(task.case_id, "task_status_updated", `Task: ${TASK_STATUS_LABELS[status] || status}`, task.title);
   }
-  const { error } = await state.client.from(TABLES.accounts).update(payload).eq('id', accountId)
-  if (error) throw error
-  await replaceAccountModules(accountId, values.module_ids || [], 'interested')
-  await refreshData()
-  toast('บันทึกแล้ว', 'success')
+
+  showToast("อัปเดต Task แล้ว");
+  await refreshData();
 }
 
-function matchesSearch(item, q, type) {
-  const account = type === 'tasks' || type === 'training' ? findAccount(item.account_id) : item
-  const contacts = account?.id ? state.cache.contacts.filter((c) => c.account_id === account.id) : []
-  const haystack = [
-    account?.running_no,
-    account?.company_name,
-    account?.short_name,
-    account?.tax_id,
-    account?.address,
-    account?.current_gps_provider,
-    masterName('leadChannels', account?.lead_channel_id),
-    masterName('businessTypes', account?.business_type_id),
-    account?.initial_note,
-    account?.product_interest,
-    item.title,
-    item.description,
-    item.training_detail,
-    item.issue_note,
-    ...contacts.flatMap((c) => [c.contact_name, c.position, c.email, c.email_2, c.phone, c.phone_2, c.phone_3])
-  ].filter(Boolean).join(' ').toLowerCase()
-  return haystack.includes(q)
+async function openCase(caseId) {
+  state.selectedCaseId = caseId;
+  await loadActivities(caseId);
+  render();
 }
 
-function renderAccountOverviewCard(account) {
-  return `
-    <div class="card">
-      <div class="section-head">
-        <h3>ข้อมูลบัญชี</h3>
-        ${!isReadOnly() ? `<button class="btn small primary" type="button" data-open-modal="account-overview" data-account-id="${account.id}">แก้ไข</button>` : ''}
-      </div>
-      <div class="meta-grid detail-meta">
-        <div class="meta-label">บริษัท</div><div>${escapeHTML(account.company_name || '-')}</div>
-        <div class="meta-label">ชื่อย่อ</div><div>${escapeHTML(account.short_name || '-')}</div>
-        <div class="meta-label">เลขผู้เสียภาษี</div><div>${escapeHTML(account.tax_id || '-')}</div>
-        <div class="meta-label">จำนวนรถ</div><div>${escapeHTML(String(account.cars_estimate || '-'))}</div>
-        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterName('leadChannels', account.lead_channel_id))}</div>
-        <div class="meta-label">แหล่งที่มา</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
-        <div class="meta-label">แคมเปญ</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
-        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterName('businessTypes', account.business_type_id))}</div>
-        <div class="meta-label">GPS ปัจจุบัน</div><div>${escapeHTML(account.current_gps_provider || '-')}</div>
-        <div class="meta-label">ที่อยู่</div><div>${escapeHTML(account.address || '-')}</div>
-        <div class="meta-label">สถานะติดต่อ</div><div>${escapeHTML(masterName('contactStatuses', account.contact_status_id))}</div>
-        <div class="meta-label">สินค้า</div><div>${escapeHTML(accountModuleNames(account.id).join(', ') || '-')}</div>
-        <div class="meta-label">รายละเอียด</div><div>${escapeHTML(account.product_interest || account.initial_note || '-')}</div>
-      </div>
-    </div>
-  `
-}
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("form[data-action]");
+  if (!form) return;
+  event.preventDefault();
 
-function renderAccountOverviewForm(account) {
-  const disabled = isReadOnly() ? 'disabled' : ''
-  return `
-    <form class="card" data-form="account-overview" data-account-id="${account.id}">
-      <h3>ข้อมูลบัญชี</h3>
-      <div class="form-grid">
-        ${inputField('company_name', 'บริษัท', 'text', false, account.company_name || '', disabled)}
-        ${inputField('short_name', 'ชื่อย่อ', 'text', false, account.short_name || '', disabled)}
-        ${inputField('tax_id', 'เลขผู้เสียภาษี', 'text', false, account.tax_id || '', disabled)}
-        ${inputField('cars_estimate', 'จำนวนรถ', 'number', false, account.cars_estimate || '', disabled)}
-        ${selectField('lead_channel_id', 'ช่องทาง', state.cache.leadChannels, 'id', 'name', false, account.lead_channel_id || '', disabled)}
-        ${selectField('lead_source_id', 'แหล่งที่มา', state.cache.leadSources, 'id', 'name', false, account.lead_source_id || '', disabled)}
-        ${selectField('campaign_id', 'แคมเปญ', state.cache.campaigns, 'id', 'name', false, account.campaign_id || '', disabled)}
-        ${selectField('business_type_id', 'ธุรกิจ', state.cache.businessTypes, 'id', 'name', false, account.business_type_id || '', disabled)}
-        ${selectField('contact_status_id', 'สถานะติดต่อ', state.cache.contactStatuses, 'id', 'name', false, account.contact_status_id || '', disabled)}
-        ${inputField('current_gps_provider', 'GPS ปัจจุบัน', 'text', false, account.current_gps_provider || '', disabled)}
-        <div class="field full" data-field="address">
-          <label>ที่อยู่</label>
-          <textarea name="address" ${disabled}>${escapeHTML(account.address || '')}</textarea>
-          <div class="field-error" data-field-error="address"></div>
-        </div>
-        ${multiSelectField('module_ids', 'สินค้า', state.cache.modules, 'id', 'module_name', accountModuleIds(account.id), disabled)}
-        <div class="field full">
-          <label>รายละเอียด</label>
-          <textarea name="product_interest" ${disabled}>${escapeHTML(account.product_interest || account.initial_note || '')}</textarea>
-        </div>
-        <div class="full actions"><button class="btn primary" type="submit" ${disabled}>บันทึก</button></div>
-      </div>
-    </form>
-  `
-}
-
-function renderAccountMeta(account) {
-  const contacts = state.cache.contacts.filter((c) => c.account_id === account.id)
-  const csOwners = state.cache.accountCsOwners.filter((o) => o.account_id === account.id).map((o) => displayUser(o.cs_user_id)).join(', ') || '-'
-  return `
-    <div class="card">
-      <h3>ข้อมูลระบบ</h3>
-      <div class="meta-grid">
-        <div class="meta-label">เลข MKT</div><div>${renderRunningNo(account)}</div>
-        <div class="meta-label">ประเภท</div><div>${escapeHTML(account.source_type || '-')}</div>
-        <div class="meta-label">Sale Owner</div><div>${escapeHTML(displayUser(account.sale_owner_id))}</div>
-        <div class="meta-label">CS Owner</div><div>${escapeHTML(csOwners)}</div>
-        <div class="meta-label">ช่องทาง</div><div>${escapeHTML(masterName('leadChannels', account.lead_channel_id))}</div>
-        <div class="meta-label">แหล่งที่มา</div><div>${escapeHTML(masterName('leadSources', account.lead_source_id))}</div>
-        <div class="meta-label">แคมเปญ</div><div>${escapeHTML(masterName('campaigns', account.campaign_id))}</div>
-        <div class="meta-label">ธุรกิจ</div><div>${escapeHTML(masterName('businessTypes', account.business_type_id))}</div>
-        <div class="meta-label">ผู้ติดต่อ</div><div>${contacts.length}</div>
-        <div class="meta-label">สร้างเมื่อ</div><div>${formatDateTime(account.created_at)}</div>
-        <div class="meta-label">อัปเดต</div><div>${formatDateTime(account.updated_at)}</div>
-      </div>
-    </div>
-  `
-}
-
-function renderCollectionToolbar(key, type, rawTotal, filteredTotal) {
-  const filter = getFilter(key)
-  const owners = state.cache.profiles.filter((p) => p.is_active || p.role !== ROLES.PENDING)
-  return `
-    <div class="filter-panel" data-filter-panel="${key}">
-      <div class="filter-row">
-        <label class="search-field">
-          <span>ค้นหา</span>
-          <input type="search" value="${escapeAttr(filter.q || '')}" data-filter-control data-filter-key="${key}" data-filter-name="q" placeholder="ค้นหาเลข MKT, บริษัท, ผู้ติดต่อ, เบอร์, อีเมล">
-        </label>
-        ${type === 'accounts' ? selectFilter(key, 'stage', 'Stage', [['', 'ทั้งหมด'], ['lead', 'ลีด'], ['demo', 'เดโม'], ['customer', 'ลูกค้า'], ['lost', 'ปิดแล้ว']], filter.stage || '') : ''}
-        ${type === 'accounts' || type === 'tasks' || type === 'training' ? selectFilter(key, 'status', 'สถานะ', filterOptionsFor(type, key, 'status'), filter.status || '') : ''}
-        ${selectFilter(key, 'owner', 'ผู้รับผิดชอบ', [['', 'ทุกคน']].concat(owners.map((p) => [p.id, displayUser(p.id)])), filter.owner || '')}
-      </div>
-      <div class="filter-row secondary">
-        ${type === 'accounts' ? selectFilter(key, 'channel', 'ช่องทาง', [['', 'ทุกช่องทาง']].concat(state.cache.leadChannels.map((r) => [r.id, r.name])), filter.channel || '') : ''}
-        ${type === 'accounts' ? selectFilter(key, 'source', 'แหล่งที่มา', [['', 'ทุกแหล่ง']].concat(state.cache.leadSources.map((r) => [r.id, r.name])), filter.source || '') : ''}
-        ${type === 'accounts' ? selectFilter(key, 'campaign', 'แคมเปญ', [['', 'ทุกแคมเปญ']].concat(state.cache.campaigns.map((r) => [r.id, r.name])), filter.campaign || '') : ''}
-        ${type === 'accounts' ? selectFilter(key, 'businessType', 'ธุรกิจ', [['', 'ทุกธุรกิจ']].concat(state.cache.businessTypes.map((r) => [r.id, r.name])), filter.businessType || '') : ''}
-        ${type === 'tasks' ? selectFilter(key, 'priority', 'ความสำคัญ', [['', 'ทั้งหมด'], ['low', 'ต่ำ'], ['medium', 'กลาง'], ['high', 'สูง'], ['urgent', 'ด่วน']], filter.priority || '') : ''}
-        ${selectFilter(key, 'sort', 'เรียง', sortOptionsFor(type), filter.sort || '')}
-        ${selectFilter(key, 'pageSize', 'แถว', [['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']], String(filter.pageSize || 25))}
-        <button class="btn small" type="button" data-action="clear-filters" data-filter-key="${key}">ล้าง</button>
-        <span class="result-count">${filteredTotal} / ${rawTotal}</span>
-      </div>
-    </div>
-  `
-}
-
-function filterOptionsFor(type, key, name) {
-  if (type === 'tasks') return [['', 'ทุกสถานะ'], ['open', 'เปิด'], ['in_progress', 'กำลังทำ'], ['blocked', 'ติดปัญหา'], ['done', 'เสร็จแล้ว'], ['cancelled', 'ยกเลิก']]
-  if (type === 'training') return [['', 'ทุกสถานะ'], ['planned', 'วางแผน'], ['done', 'เสร็จแล้ว'], ['cancelled', 'ยกเลิก']]
-  return [['', 'ทุกสถานะ'], ['new', 'ใหม่'], ['assigned', 'มอบหมายแล้ว'], ['contacted', 'ติดต่อแล้ว'], ['follow_up', 'ติดตามต่อ'], ['demo_requested', 'ขอเดโม'], ['customer_active', 'ลูกค้าใช้งาน'], ['lost', 'ปิด Lost'], ['churned', 'เลิกใช้งาน']]
-}
-
-function sortOptionsFor(type) {
-  if (type === 'tasks') return [['due_asc', 'กำหนดใกล้สุด'], ['updated_desc', 'อัปเดตล่าสุด'], ['priority_desc', 'ความสำคัญสูงสุด']]
-  if (type === 'training') return [['date_asc', 'วันที่ใกล้สุด'], ['updated_desc', 'อัปเดตล่าสุด']]
-  return [['updated_desc', 'อัปเดตล่าสุด'], ['created_desc', 'สร้างล่าสุด'], ['running_asc', 'เลข MKT น้อยไปมาก'], ['name_asc', 'ชื่อ A-Z']]
-}
-
-function renderAccountTable(items) {
-  if (!items.length) return emptyState('ไม่พบข้อมูล', '')
-  const rows = items.map((a) => `
-    <tr>
-      <td>${renderRunningNo(a)}</td>
-      <td><button class="btn small" type="button" data-nav-account="${a.id}">${escapeHTML(accountTitle(a))}</button></td>
-      <td>${badge(a.lifecycle_stage)}</td>
-      <td>${badge(a.lifecycle_status || '-')}</td>
-      <td>${escapeHTML(displayUser(a.sale_owner_id))}</td>
-      <td>${escapeHTML(masterName('leadChannels', a.lead_channel_id))}</td>
-      <td>${escapeHTML(masterName('campaigns', a.campaign_id))}</td>
-      <td>${escapeHTML(masterName('businessTypes', a.business_type_id))}</td>
-      <td>${escapeHTML(String(a.cars_estimate || '-'))}</td>
-      <td>${formatDateTime(a.updated_at)}</td>
-    </tr>
-  `).join('')
-  return `<div class="table-wrap responsive-table"><table><thead><tr><th>เลข</th><th>บัญชี</th><th>ช่วง</th><th>สถานะ</th><th>Sale</th><th>ช่องทาง</th><th>แคมเปญ</th><th>ธุรกิจ</th><th>รถ</th><th>อัปเดต</th></tr></thead><tbody>${rows}</tbody></table></div>`
-}
-
-function renderAccountList(items) {
-  if (!items.length) return emptyState('ไม่พบข้อมูล', '')
-  return `
-    <div class="list-view">
-      ${items.map((a) => `
-        <div class="list-item">
-          <div class="list-title">
-            <span>${escapeHTML(accountTitle(a))}</span>
-            <span>${badge(a.lifecycle_stage)} ${badge(a.lifecycle_status || '-')}</span>
-          </div>
-          <div class="list-meta">
-            ${renderRunningNo(a)} · Sale: ${escapeHTML(displayUser(a.sale_owner_id))} · รถ: ${escapeHTML(String(a.cars_estimate || '-'))}<br>
-            ช่องทาง: ${escapeHTML(masterName('leadChannels', a.lead_channel_id))} · แคมเปญ: ${escapeHTML(masterName('campaigns', a.campaign_id))} · ธุรกิจ: ${escapeHTML(masterName('businessTypes', a.business_type_id))}
-          </div>
-          <div class="actions"><button class="btn small" type="button" data-nav-account="${a.id}">เปิด</button></div>
-        </div>
-      `).join('')}
-    </div>
-  `
-}
-
-function renderRunningNo(account) {
-  if (!account?.running_no) return '<span class="muted">-</span>'
-  return `#${escapeHTML(String(account.running_no))}`
-}
-
-function readonlyDisplay(name, label, value) {
-  const id = fieldId(name)
-  return `
-    <div class="field readonly-field" data-field="${escapeAttr(name)}">
-      <label for="${escapeAttr(id)}">${escapeHTML(label)}</label>
-      <input id="${escapeAttr(id)}" type="text" value="${escapeAttr(value || '-')}" disabled>
-    </div>
-  `
-}
-
-function activeSalesNames() {
-  const sales = state.cache.profiles
-    .filter((profile) => profile.role === ROLES.SALE && profile.is_active)
-    .map((profile) => displayUser(profile.id))
-    .filter(Boolean)
-  return sales.join(', ')
-}
-
-async function createMaster(form) {
-  const values = formValues(form)
-  const nameField = form.dataset.nameField
-  const payload = { [nameField]: values.name, is_active: true }
-  const { error } = await state.client.from(form.dataset.table).insert(payload)
-  if (error) throw error
-  form.reset()
-  await refreshData()
-  toast('เพิ่มข้อมูลแล้ว', 'success')
-}
-
-async function toggleMaster(table, id, active) {
-  const { error } = await state.client.from(table).update({ is_active: active }).eq('id', id)
-  if (error) throw error
-  await refreshData()
-  toast('อัปเดตแล้ว', 'success')
-}
-
-
-
-/* v1.5.0 UX Flow Stabilization: default work page, return refresh, demo history */
-var crmLastHiddenAt = 0
-var crmLastVisibilityRefreshAt = 0
-var crmVisibilityRefreshInFlight = false
-var crmVisibilityListenerAttached = false
-var crmHashScrollListenerAttached = false
-
-;(function applyV150Defaults() {
-  const routeOrder = ['my-work', 'dashboard', 'leads', 'demo', 'customers', 'tasks', 'training', 'accounts', 'reports', 'admin']
-  ROUTES.sort((a, b) => routeOrder.indexOf(a.key) - routeOrder.indexOf(b.key))
-
-  Object.assign(STATUS_LABELS, {
-    requested: 'รอเดโม',
-    active: 'กำลังเดโม',
-    extended: 'ขยายเวลา',
-    ended: 'จบเดโม',
-    converted: 'เป็นลูกค้า',
-    lost: 'ปิด Lost',
-    demo_requested: 'รอเดโม',
-    demo_active: 'กำลังเดโม'
-  })
-
-  if (!state.filters.demo) state.filters.demo = defaultFilter('demo')
-  state.filters.demo.scope = state.filters.demo.scope || 'active'
-  state.viewModes.demo = ['table', 'list', 'calendar'].includes(state.viewModes.demo) ? state.viewModes.demo : 'table'
-})()
-
-async function init() {
-  state.sidebarCollapsed = true
-
-  if (!isConfigured()) {
-    renderSetupRequired()
-    return
-  }
+  const action = form.dataset.action;
+  const button = event.submitter || form.querySelector("button[type='submit']");
 
   try {
-    attachV150BrowserListeners()
+    if (action === "login") await handleLogin(form, button);
+    if (action === "save-config") await handleSaveConfig(form, button);
+    if (action === "create-lead") await handleCreateLead(form, button);
+    if (action === "save-task") await saveTask(form, button);
+  } catch (error) {
+    showError(error);
+  }
+});
 
-    state.client = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    })
+document.addEventListener("click", async (event) => {
+  const routeButton = event.target.closest("[data-route]");
+  if (routeButton) {
+    state.route = routeButton.dataset.route;
+    state.selectedCaseId = null;
+    render();
+    return;
+  }
 
-    const { data, error } = await state.client.auth.getSession()
-    if (error) throw error
-    state.session = data.session
-    state.user = data.session?.user || null
+  const filterButton = event.target.closest("[data-filter-group]");
+  if (filterButton) {
+    state.filters[filterButton.dataset.filterGroup] = filterButton.dataset.filterValue;
+    render();
+    return;
+  }
 
-    state.client.auth.onAuthStateChange(async (_event, session) => {
-      state.session = session
-      state.user = session?.user || null
-      if (state.user) {
-        await bootstrapUser()
-      } else {
-        state.profile = null
-        resetCache()
-      }
-      render()
-    })
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
 
-    if (state.user) {
-      await bootstrapUser()
+  if (
+    button.dataset.action === "close-drawer" &&
+    event.target.closest(".drawer") &&
+    !event.target.closest('button[data-action="close-drawer"]')
+  ) {
+    return;
+  }
+
+  const action = button.dataset.action;
+  const id = button.dataset.id;
+
+  const run = async () => {
+    if (action === "refresh") await refreshData();
+    if (action === "logout") await supabase.auth.signOut();
+    if (action === "toggle-create-lead") document.querySelector('[data-section="create-lead"]')?.classList.toggle("hidden");
+    if (action === "create-task") document.querySelector('[data-section="create-task"]')?.classList.toggle("hidden");
+    if (action === "open-case") await openCase(id);
+    if (action === "close-drawer") {
+      state.selectedCaseId = null;
+      state.activities = [];
+      render();
     }
+    if (action === "send-demo") await sendLeadToDemo(id);
+    if (action === "convert-customer") await convertToCustomer(id);
+    if (action === "close-lost") await closeAsLost(id);
+    if (action === "mark-churn") await markChurn(id);
+    if (action === "edit-demo") await editDemo(id);
+    if (action === "edit-customer") await editCustomer(id);
+    if (action === "create-task-for-case") await createTaskForCase(id);
+    if (action === "complete-task") await updateTaskStatus(id, "done");
+    if (action === "cancel-task") await updateTaskStatus(id, "cancelled");
+  };
 
-    render()
-  } catch (error) {
-    renderFatalError(error)
-  }
-}
-
-function attachV150BrowserListeners() {
-  if (!crmVisibilityListenerAttached) {
-    document.addEventListener('visibilitychange', handleVisibilityRefresh)
-    crmVisibilityListenerAttached = true
-  }
-
-  if (!crmHashScrollListenerAttached) {
-    window.addEventListener('hashchange', () => window.setTimeout(scrollToPageTop, 0))
-    crmHashScrollListenerAttached = true
-  }
-}
-
-async function handleVisibilityRefresh() {
-  if (document.visibilityState === 'hidden') {
-    crmLastHiddenAt = Date.now()
-    return
-  }
-
-  if (document.visibilityState !== 'visible') return
-  if (!state.user || !isActiveUser()) return
-  if (hasBlockingFormOrModal()) return
-
-  const now = Date.now()
-  const wasHiddenLongEnough = crmLastHiddenAt && now - crmLastHiddenAt > 1200
-  const notTooFrequent = now - crmLastVisibilityRefreshAt > 8000
-  if (!wasHiddenLongEnough || !notTooFrequent || crmVisibilityRefreshInFlight) return
-
-  crmVisibilityRefreshInFlight = true
-  crmLastVisibilityRefreshAt = now
   try {
-    await loadAllData()
-    render()
-    window.setTimeout(scrollToPageTop, 0)
-  } catch (error) {
-    toast(error.message || String(error), 'error')
-  } finally {
-    crmVisibilityRefreshInFlight = false
-  }
-}
+    const asyncActions = new Set([
+      "refresh", "logout", "open-case", "send-demo", "convert-customer", "close-lost",
+      "mark-churn", "edit-demo", "edit-customer", "create-task-for-case",
+      "complete-task", "cancel-task"
+    ]);
 
-function hasBlockingFormOrModal() {
-  if (state.modal) return true
-  if (document.querySelector('[data-modal-card]')) return true
-  if (document.querySelector('form[data-busy="true"]')) return true
-  const activeForm = document.querySelector('form[data-form]:not(.login-card)')
-  return Boolean(activeForm)
-}
-
-function scrollToPageTop() {
-  try {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    const content = document.getElementById('page-content')
-    if (content) content.scrollTop = 0
-  } catch (_error) {
-    window.scrollTo(0, 0)
-  }
-}
-
-function getRoute() {
-  const hash = (location.hash || '#/my-work').replace(/^#\/?/, '')
-  const [key, id] = hash.split('/')
-  if (key === 'account' && id) return { key: 'account', id }
-  return { key: key || 'my-work' }
-}
-
-async function login(form) {
-  const values = formValues(form)
-  if (!nullIfBlank(values.email) || !nullIfBlank(values.password)) {
-    throw createValidationError('กรุณากรอกอีเมลและรหัสผ่าน', ['email', 'password'])
-  }
-
-  const shouldGoToDefault = !location.hash || location.hash === '#/' || location.hash === '#/dashboard'
-  const { error } = await state.client.auth.signInWithPassword({
-    email: values.email,
-    password: values.password
-  })
-  if (error) throw error
-
-  if (shouldGoToDefault) location.hash = '#/my-work'
-  toast('เข้าสู่ระบบแล้ว', 'success')
-}
-
-async function refreshData() {
-  try {
-    await loadAllData()
-    render()
-    scrollToPageTop()
-    toast('รีเฟรชแล้ว', 'success')
-  } catch (error) {
-    toast(error.message || String(error), 'error')
-  }
-}
-
-function onClick(event) {
-  const closeBtn = event.target.closest('[data-close-modal]')
-  if (closeBtn || event.target.matches('[data-modal-backdrop]')) {
-    closeModal()
-    return
-  }
-
-  const openModalBtn = event.target.closest('[data-open-modal]')
-  if (openModalBtn) {
-    openModalFromDataset(openModalBtn.dataset)
-    return
-  }
-
-  const nav = event.target.closest('[data-nav]')
-  if (nav) {
-    location.hash = `#/${nav.dataset.nav}`
-    return
-  }
-
-  const navAccount = event.target.closest('[data-nav-account]')
-  if (navAccount) {
-    location.hash = `#/account/${navAccount.dataset.navAccount}`
-    return
-  }
-
-  const viewBtn = event.target.closest('[data-view-key]')
-  if (viewBtn) {
-    state.viewModes[viewBtn.dataset.viewKey] = viewBtn.dataset.viewMode
-    render()
-    scrollToPageTop()
-    return
-  }
-
-  const leadTab = event.target.closest('[data-lead-tab]')
-  if (leadTab) {
-    const filter = getFilter('leads')
-    filter.stage = leadTab.dataset.leadTab
-    filter.page = 1
-    render()
-    scrollToPageTop()
-    return
-  }
-
-  const demoTab = event.target.closest('[data-demo-tab]')
-  if (demoTab) {
-    const filter = getFilter('demo')
-    filter.scope = demoTab.dataset.demoTab || 'active'
-    filter.page = 1
-    render()
-    scrollToPageTop()
-    return
-  }
-
-  const tabBtn = event.target.closest('[data-account-tab]')
-  if (tabBtn) {
-    state.accountTabs[tabBtn.dataset.accountId] = tabBtn.dataset.accountTab
-    render()
-    scrollToPageTop()
-    return
-  }
-
-  const pageBtn = event.target.closest('[data-page-key]')
-  if (pageBtn) {
-    const filter = getFilter(pageBtn.dataset.pageKey)
-    filter.page = Number(filter.page || 1) + Number(pageBtn.dataset.pageDelta || 0)
-    render()
-    scrollToPageTop()
-    return
-  }
-
-  const action = event.target.closest('[data-action]')
-  if (!action) return
-
-  const type = action.dataset.action
-  if (type === 'toggle-sidebar') return
-  if (type === 'logout') return withActionBusy(action, logout)
-  if (type === 'refresh-data') return withActionBusy(action, refreshData)
-  if (type === 'print') return window.print()
-  if (type === 'show-lost-form') {
-    state.modal = { type: 'mark-lost', accountId: action.dataset.id }
-    render()
-    return
-  }
-  if (type === 'convert-customer') return withActionBusy(action, () => convertCustomer(action.dataset.id))
-  if (type === 'mark-task-done') return withActionBusy(action, () => markTaskDone(action.dataset.id))
-  if (type === 'save-profile') return withActionBusy(action, () => saveProfile(action.dataset.id))
-  if (type === 'toggle-master') return withActionBusy(action, () => toggleMaster(action.dataset.table, action.dataset.id, action.dataset.active === 'true'))
-  if (type === 'clear-filters') {
-    const key = action.dataset.filterKey
-    state.filters[key] = defaultFilter(key)
-    render()
-    scrollToPageTop()
-  }
-}
-
-function renderViewSwitcher(key) {
-  const mode = state.viewModes[key] || 'table'
-  const modesByPage = {
-    leads: ['table', 'list'],
-    accounts: ['table', 'list'],
-    demo: ['table', 'list', 'calendar'],
-    customers: ['table', 'list'],
-    tasks: ['board', 'list', 'calendar'],
-    training: ['calendar', 'list', 'table']
-  }
-  const modes = modesByPage[key] || ['table', 'list']
-  if (!modes.includes(mode)) state.viewModes[key] = modes[0]
-  return `
-    <div class="view-switcher">
-      ${modes.map((item) => `<button class="view-btn ${state.viewModes[key] === item ? 'active' : ''}" type="button" data-view-key="${key}" data-view-mode="${item}">${viewLabel(item)}</button>`).join('')}
-    </div>
-  `
-}
-
-function defaultFilter(key) {
-  if (key === 'leads') return { q: '', stage: 'lead', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-  if (key === 'accounts') return { q: '', stage: '', status: '', owner: '', channel: '', source: '', campaign: '', businessType: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-  if (key === 'tasks') return { q: '', status: '', owner: '', priority: '', sort: 'due_asc', page: 1, pageSize: 25 }
-  if (key === 'training') return { q: '', status: '', owner: '', sort: 'date_asc', page: 1, pageSize: 25 }
-  if (key === 'demo') return { q: '', scope: 'active', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-  if (key === 'customers') return { q: '', status: '', owner: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-  return { q: '', sort: 'updated_desc', page: 1, pageSize: 25 }
-}
-
-function renderDemo() {
-  const filter = getFilter('demo')
-  filter.scope = filter.scope || 'active'
-  const scopedDemos = demoSessionsByScope(filter.scope)
-
-  return `
-    <div class="page-header">
-      <div>
-        <h2>เดโม</h2>
-        <p class="page-caption">แสดงจากบันทึกเดโมโดยตรง แม้บัญชีจะเปลี่ยนเป็นลูกค้าหรือปิดแล้ว</p>
-      </div>
-      ${renderViewSwitcher('demo')}
-    </div>
-    ${renderDemoTabs(filter.scope)}
-    <div class="card">
-      ${renderDemoCollection(scopedDemos, 'demo')}
-    </div>
-  `
-}
-
-function renderDemoTabs(activeScope) {
-  const tabs = [
-    ['active', 'กำลังทำ / รอทำ'],
-    ['all', 'ทั้งหมด'],
-    ['ended', 'จบแล้ว'],
-    ['converted', 'เป็นลูกค้า'],
-    ['lost', 'ปิด Lost']
-  ]
-
-  return `
-    <div class="tabs demo-tabs" role="tablist" aria-label="ตัวกรองเดโม">
-      ${tabs.map(([scope, label]) => `
-        <button class="tab ${String(activeScope || 'active') === scope ? 'active' : ''}" type="button" data-demo-tab="${escapeAttr(scope)}">${escapeHTML(label)} (${demoSessionsByScope(scope).length})</button>
-      `).join('')}
-    </div>
-  `
-}
-
-function demoSessionsByScope(scope) {
-  const demos = state.cache.demos || []
-  const activeStatuses = ['requested', 'active', 'extended']
-  if (scope === 'all') return demos.slice()
-  if (scope === 'ended') return demos.filter((demo) => ['ended', 'cancelled'].includes(demo.demo_status))
-  if (scope === 'converted') {
-    return demos.filter((demo) => demo.demo_status === 'converted' || findAccount(demo.account_id)?.lifecycle_stage === 'customer')
-  }
-  if (scope === 'lost') {
-    return demos.filter((demo) => demo.demo_status === 'lost' || findAccount(demo.account_id)?.lost_from_stage === 'demo')
-  }
-  return demos.filter((demo) => activeStatuses.includes(demo.demo_status || 'requested'))
-}
-
-function renderDemoCollection(items, key) {
-  const prepared = prepareDemoCollection(items, key)
-  const mode = ['table', 'list', 'calendar'].includes(state.viewModes[key]) ? state.viewModes[key] : 'table'
-  let body = ''
-  if (mode === 'calendar') body = renderCalendarEvents(prepared.items.flatMap((demo) => demoCalendarEvents(demo)))
-  else if (mode === 'list') body = renderDemoList(prepared.items)
-  else body = renderDemoTable(prepared.items)
-
-  return `
-    ${renderDemoToolbar(key, items.length, prepared.total)}
-    ${body}
-    ${renderPagination(key, prepared)}
-  `
-}
-
-function prepareDemoCollection(items, key) {
-  const filter = getFilter(key)
-  let rows = filterDemoCollection(items, filter)
-  rows = sortDemoCollection(rows, filter.sort)
-  const total = rows.length
-  const pageSize = Math.max(1, Number(filter.pageSize || 25))
-  const maxPage = Math.max(1, Math.ceil(total / pageSize))
-  const page = Math.min(Math.max(1, Number(filter.page || 1)), maxPage)
-  filter.page = page
-  filter.pageSize = pageSize
-  const start = (page - 1) * pageSize
-  return {
-    items: rows.slice(start, start + pageSize),
-    total,
-    page,
-    pageSize,
-    maxPage
-  }
-}
-
-function filterDemoCollection(items, filter) {
-  const q = String(filter.q || '').trim().toLowerCase()
-  return items.filter((demo) => {
-    if (q && !matchesDemoSearch(demo, q)) return false
-    if (filter.status && demo.demo_status !== filter.status) return false
-    if (filter.owner) {
-      const account = findAccount(demo.account_id)
-      const csOwners = state.cache.accountCsOwners
-        .filter((owner) => owner.account_id === demo.account_id)
-        .map((owner) => owner.cs_user_id)
-      const ownerFields = [demo.sale_owner_id, demo.cs_owner_id, account?.sale_owner_id].concat(csOwners)
-      if (!ownerFields.includes(filter.owner)) return false
+    if (asyncActions.has(action)) {
+      await withButtonLoading(button, run);
+    } else {
+      await run();
     }
-    return true
-  })
-}
+  } catch (error) {
+    showError(error);
+  }
+});
 
-function matchesDemoSearch(demo, q) {
-  const account = findAccount(demo.account_id)
-  const contacts = account?.id ? state.cache.contacts.filter((contact) => contact.account_id === account.id) : []
-  const haystack = [
-    account?.running_no,
-    account?.company_name,
-    account?.short_name,
-    account?.tax_id,
-    account?.initial_note,
-    account?.product_interest,
-    account?.current_gps_provider,
-    demo.demo_status,
-    demo.demo_result,
-    demo.requirement_note,
-    demo.follow_up_note,
-    masterName('leadChannels', account?.lead_channel_id),
-    masterName('businessTypes', account?.business_type_id),
-    ...contacts.flatMap((contact) => [contact.contact_name, contact.position, contact.email, contact.email_2, contact.phone, contact.phone_2, contact.phone_3])
-  ].filter(Boolean).join(' ').toLowerCase()
-  return haystack.includes(q)
-}
+window.addEventListener("beforeunload", cleanupRealtime);
 
-function sortDemoCollection(rows, sort) {
-  const copy = rows.slice()
-  copy.sort((a, b) => {
-    if (sort === 'date_asc') return String(a.start_date || a.end_date || '9999').localeCompare(String(b.start_date || b.end_date || '9999'))
-    if (sort === 'created_desc') return String(b.created_at || '').localeCompare(String(a.created_at || ''))
-    return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''))
-  })
-  return copy
-}
+boot().catch((error) => {
+  showError(error, "เริ่มระบบไม่สำเร็จ");
+  renderSetup(error.message);
+});
 
-function renderDemoToolbar(key, rawTotal, filteredTotal) {
-  const filter = getFilter(key)
-  const owners = state.cache.profiles.filter((profile) => profile.is_active || profile.role !== ROLES.PENDING)
-  return `
-    <div class="filter-panel" data-filter-panel="${key}">
-      <div class="filter-row">
-        <label class="search-field">
-          <span>ค้นหา</span>
-          <input type="search" value="${escapeAttr(filter.q || '')}" data-filter-control data-filter-key="${key}" data-filter-name="q" placeholder="ค้นหาบัญชี ผู้ติดต่อ เบอร์ อีเมล หรือผลเดโม">
-        </label>
-        ${selectFilter(key, 'status', 'สถานะเดโม', demoStatusOptions(), filter.status || '')}
-        ${selectFilter(key, 'owner', 'ผู้รับผิดชอบ', [['', 'ทุกคน']].concat(owners.map((profile) => [profile.id, displayUser(profile.id)])), filter.owner || '')}
-      </div>
-      <div class="filter-row secondary">
-        ${selectFilter(key, 'sort', 'เรียง', [['updated_desc', 'อัปเดตล่าสุด'], ['date_asc', 'วันที่ใกล้สุด'], ['created_desc', 'สร้างล่าสุด']], filter.sort || 'updated_desc')}
-        ${selectFilter(key, 'pageSize', 'แถว', [['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']], String(filter.pageSize || 25))}
-        <button class="btn small" type="button" data-action="clear-filters" data-filter-key="${key}">ล้าง</button>
-        <span class="result-count">${filteredTotal} / ${rawTotal}</span>
-      </div>
-    </div>
-  `
-}
-
-function demoStatusOptions() {
-  return [
-    ['', 'ทุกสถานะ'],
-    ['requested', 'รอเดโม'],
-    ['active', 'กำลังเดโม'],
-    ['extended', 'ขยายเวลา'],
-    ['ended', 'จบเดโม'],
-    ['cancelled', 'ยกเลิก'],
-    ['converted', 'เป็นลูกค้า'],
-    ['lost', 'ปิด Lost']
-  ]
-}
-
-function renderDemoTable(items) {
-  if (!items.length) return emptyState('ไม่มีเดโม', '')
-  const rows = items.map((demo) => {
-    const account = findAccount(demo.account_id)
-    return `
-      <tr>
-        <td><button class="btn small" type="button" data-nav-account="${demo.account_id}">${escapeHTML(accountTitle(account))}</button></td>
-        <td>${badge(demo.demo_status || 'requested')}</td>
-        <td>${formatDate(demo.start_date)}</td>
-        <td>${formatDate(demo.end_date)}</td>
-        <td>${escapeHTML(displayUser(demo.sale_owner_id || account?.sale_owner_id))}</td>
-        <td>${escapeHTML(demo.demo_result || '-')}</td>
-        <td>${formatDateTime(demo.updated_at || demo.created_at)}</td>
-      </tr>
-    `
-  }).join('')
-
-  return `
-    <div class="table-wrap responsive-table">
-      <table>
-        <thead><tr><th>บัญชี</th><th>สถานะ</th><th>เริ่ม</th><th>สิ้นสุด</th><th>Sale</th><th>ผลเดโม</th><th>อัปเดต</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  `
-}
-
-function renderDemoList(items) {
-  if (!items.length) return emptyState('ไม่มีเดโม', '')
-  return `
-    <div class="list-view">
-      ${items.map((demo) => {
-        const account = findAccount(demo.account_id)
-        return `
-          <div class="list-item">
-            <div class="list-title">
-              <span>${escapeHTML(accountTitle(account))}</span>
-              <span>${badge(demo.demo_status || 'requested')} ${badge(account?.lifecycle_stage || '-')}</span>
-            </div>
-            <div class="list-meta">
-              เริ่ม: ${formatDate(demo.start_date)} · สิ้นสุด: ${formatDate(demo.end_date)} · Sale: ${escapeHTML(displayUser(demo.sale_owner_id || account?.sale_owner_id))}<br>
-              ผลเดโม: ${escapeHTML(demo.demo_result || '-')}<br>
-              ความต้องการ: ${escapeHTML(demo.requirement_note || '-')}
-            </div>
-            <div class="actions"><button class="btn small" type="button" data-nav-account="${demo.account_id}">เปิดบัญชี</button></div>
-          </div>
-        `
-      }).join('')}
-    </div>
-  `
-}
-
-function demoCalendarEvents(demo) {
-  const account = findAccount(demo.account_id)
-  const title = accountTitle(account)
-  const events = []
-  if (demo.start_date) events.push({ date: demo.start_date, title: `เริ่มเดโม: ${title}`, accountId: demo.account_id })
-  if (demo.end_date) events.push({ date: demo.end_date, title: `สิ้นสุดเดโม: ${title}`, accountId: demo.account_id })
-  return events
-}
-
-function filterOptionsFor(type, key, name) {
-  if (type === 'demo') return demoStatusOptions()
-  if (type === 'tasks') return [['', 'ทุกสถานะ'], ['open', 'เปิด'], ['in_progress', 'กำลังทำ'], ['blocked', 'ติดปัญหา'], ['done', 'เสร็จแล้ว'], ['cancelled', 'ยกเลิก']]
-  if (type === 'training') return [['', 'ทุกสถานะ'], ['planned', 'วางแผน'], ['done', 'เสร็จแล้ว'], ['cancelled', 'ยกเลิก']]
-  return [['', 'ทุกสถานะ'], ['new', 'ใหม่'], ['assigned', 'มอบหมายแล้ว'], ['contacted', 'ติดต่อแล้ว'], ['follow_up', 'ติดตามต่อ'], ['demo_requested', 'ขอเดโม'], ['customer_active', 'ลูกค้าใช้งาน'], ['lost', 'ปิด Lost'], ['churned', 'เลิกใช้งาน']]
-}
+window.INTERNAL_CRM_VERSION = APP_VERSION;

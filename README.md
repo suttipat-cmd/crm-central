@@ -1,261 +1,329 @@
-# Internal CRM Ops
+# Internal CRM
 
-Current version: `1.5.0`  
-Release date: `2026-06-21`  
-Stack: GitHub Pages + Supabase + plain HTML/CSS/JS  
-Repository files allowed: `README.md`, `index.html`, `script.js`, `style.css`
+Current version: **0.1.1**
+
+Internal CRM สำหรับจัดการ journey เดียวตั้งแต่ **Lead → Demo → Customer → Lost/Churn** โดยใช้ `crm_cases` เป็น record หลัก ทำให้ข้อมูลไม่หายเมื่อเปลี่ยนสถานะ และยังดู Demo history / Task / Activity ย้อนหลังได้เสมอ
 
 ## Changelog
 
-### v1.5.0 — UX Flow Stabilization
+### v0.1.1
 
-- หลัง login เปิดหน้า `งานของฉัน` เป็นค่าเริ่มต้น
-- เมื่อผู้ใช้สลับไป browser tab อื่นแล้วกลับมา ระบบจะ reload ข้อมูลล่าสุดและเลื่อนกลับขึ้นบนหน้า
-- ป้องกัน reload อัตโนมัติถ้ามี modal/form เปิดอยู่ เพื่อไม่ให้ข้อมูลที่กำลังกรอกหาย
-- หน้า `เดโม` ใช้ `demo_sessions` เป็น source of truth จึงแสดงประวัติเดโมแม้ account จะเปลี่ยนเป็นลูกค้า หรือปิด Lost แล้ว
-- หน้า `เดโม` default แสดงรายการที่กำลังทำ/รอทำ และมี tab สำหรับทั้งหมด/จบแล้ว/เป็นลูกค้า/ปิด Lost
-- ลด view ที่ไม่จำเป็นในแต่ละหน้าให้ตรงกับ flow งานจริง: Lead/Account/Customer ใช้ตาราง+รายการ, Demo ใช้ตาราง+รายการ+ปฏิทิน, Task ใช้บอร์ด+รายการ+ปฏิทิน, Training ใช้ปฏิทิน+รายการ+ตาราง
-- ไม่มี SQL migration ใหม่
+- ปรับแพ็กเกจส่งมอบให้ตรง requirement: เหลือเฉพาะ 4 ไฟล์หลัก + โฟลเดอร์ `sql/`
+- ย้าย `src/app.js` เป็น `script.js`
+- ย้าย `src/styles.css` เป็น `style.css`
+- รวม runtime config default ไว้ใน `script.js` แทน `config.js`
+- SQL schema เดิมยังอยู่ใน `sql/001_initial_schema.sql`
 
-### v1.4.2 — Hotfix Render Permission Helper
+### v0.1.0
 
-- แก้ runtime error `hasRole is not defined` หลัง login สำเร็จ
-- คืนชื่อ internal helper ที่ถูกแปลผิดกลับเป็นภาษาอังกฤษ: `hasRole`, `findAccount`, `formatDate`
-- คงข้อความ UI ภาษาไทยตาม requirement เดิม
-- ไม่มี SQL migration ใหม่
+- สร้าง Static Web App ด้วย HTML/CSS/JavaScript
+- เชื่อม Supabase Auth + Database ผ่าน anon key
+- เพิ่มหน้า My Work เป็นหน้าแรกหลัง Login
+- เพิ่มหน้า Lead, Demo Queue, Customer, Task และ History
+- เพิ่ม journey action:
+  - สร้าง Lead
+  - ส่ง Lead เข้า Demo
+  - Convert Lead/Demo เป็น Customer
+  - ปิด Lead/Demo เป็น Lost
+  - Mark Customer เป็น Churn
+  - สร้าง/ปิด Task
+  - ดู Activity + Demo history ย้อนหลัง
+- เพิ่ม RLS policies สำหรับ role `admin`, `manager`, `mkt`, `sale`, `cs`
 
+## Project Structure
 
-### v1.4.1 — Hotfix Login Auth Method
+```text
+internal-crm-v0.1.1/
+  index.html
+  style.css
+  script.js
+  README.md
+  sql/
+    001_initial_schema.sql
+```
 
-- แก้ regression จาก v1.4.0 ที่ internal JS identifier ถูกแปลเป็นภาษาไทย ทำให้เรียก `signInWithPassword()` ผิดเป็น `signInWithรหัสผ่าน()` และ login ไม่ได้
-- คืนชื่อ internal identifier/API/property ที่ต้องเป็นภาษาอังกฤษ เช่น `autoRefreshToken`, `dataset.filterName`, `dataset.navAccount`, `className`, `DateTimeFormat`, `accountModules`, `leadSources`, `contactStatuses`, `accountCsOwners`
-- ไม่มี SQL migration ใหม่ และไม่กระทบ schema/RLS
+## Setup
 
+1. สร้าง Supabase project
+2. เปิด SQL Editor แล้วรันไฟล์:
 
-### v1.4.0 — Thai UI, Hover Sidebar, Master Delete Guard
+```text
+sql/001_initial_schema.sql
+```
 
-- ตัด `legacy_account_id` / Account ID ระบบเดิมออกจาก frontend, RPC และ database migration
-- Master data ลบได้เมื่อยังไม่ถูกใช้งาน และถ้าถูกใช้งานแล้วให้ใช้ปิดใช้งานแทน
-- ปรับข้อความ UI ให้สั้นลงและใช้ภาษาไทยเป็นหลัก
-- Sidebar default เป็น icon-only และขยายอัตโนมัติเมื่อ hover/focus โดยไม่มีปุ่มย่อ/ขยาย
-- อัปเดต README ให้ตรงกับ schema และ flow ล่าสุด
+3. สร้างผู้ใช้ใน Supabase Auth
+4. Promote admin คนแรก:
+
+```sql
+update public.profiles
+set role = 'admin'
+where email = 'admin@example.com';
+```
+
+เปลี่ยน `admin@example.com` เป็นอีเมลจริงก่อนรัน
+
+5. เปิด `index.html` ผ่าน static server เช่น VS Code Live Server หรือ deploy ไปยัง static hosting
+6. หน้า Setup ของระบบจะให้กรอก:
+   - Supabase URL
+   - Supabase anon key
+
+ระบบจะเก็บค่านี้ใน `localStorage` ของ browser
+
+อีกทางเลือกหนึ่ง สามารถแก้ค่า default ใน `script.js` ได้:
+
+```js
+window.CRM_CONFIG = window.CRM_CONFIG || {
+  supabaseUrl: "https://YOUR_PROJECT_ID.supabase.co",
+  supabaseAnonKey: "YOUR_SUPABASE_ANON_KEY"
+};
+```
+
+ห้ามใส่ `service_role key`, database password, private token หรือ secret ใด ๆ ใน frontend
 
 ## System Overview
 
-ระบบนี้เป็น CRM ภายในสำหรับจัดการ Lead, Demo, Customer, Training และ Task ของทีม MKT, Sale, CS, Manager และ Admin
-
-เส้นทางหลัก:
+ระบบใช้ `crm_cases` เป็น record หลักของ journey และใช้ table ลูกเก็บข้อมูลเฉพาะช่วง:
 
 ```text
-Lead → Lost
-Lead → Customer
-Lead → Demo → Lost
-Lead → Demo → Customer
-Lead → Demo → Customer → Lost / Churn
+crm_cases
+  ├── demo_sessions
+  ├── customer_profiles
+  ├── tasks
+  └── case_activities
 ```
 
-ข้อมูลทุกช่วงผูกกับ `accounts.id` เดียวกัน เพื่อดูประวัติและทำงานต่อได้ แม้ Lead จะเปลี่ยนเป็น Demo, Customer หรือ Lost แล้ว
+หลักการสำคัญ:
 
-## Roles
+- Lead, Demo, Customer, Lost, Churn เป็นเคสเดียวกัน
+- ไม่ hard delete ข้อมูลธุรกิจ
+- Demo history ยังดูย้อนหลังได้ แม้เคสนั้นเปลี่ยนเป็น Customer แล้ว
+- Task เป็นตัวขับเคลื่อนหน้า “งานของฉัน”
+- ทุก status transition ต้องสร้าง activity log
+- Lost ใช้กับ Lead/Demo ที่ไม่ซื้อ
+- Churn ใช้กับ Customer ที่เคยซื้อแล้วเลิกใช้
+
+## User Flows
+
+### Lead
+
+Role `mkt`, `sale`, `admin` สร้าง Lead ได้
+
+ข้อมูลหลัก:
+
+- บริษัท/หน่วยงาน
+- ผู้ติดต่อ
+- Email/Phone
+- Source channel
+- Sale owner
+- สินค้าที่สนใจ
+- ระดับความสนใจ
+- Qualification note
+- Next follow-up date
+
+Sale owner สามารถส่งเข้า Demo, Convert เป็น Customer, ปิด Lost และสร้าง Task ต่อได้
+
+### Demo Queue
+
+เมื่อ Lead สนใจแต่ต้องทดลองก่อน ระบบจะสร้าง record ใน `demo_sessions` และเปลี่ยน `crm_cases.stage` เป็น `demo`
+
+CS เห็น Demo ร่วมกันทั้งทีม และบันทึก Demo status, start/end date, demo users, requirements, result, notes และ next follow-up ได้
+
+หลัง Demo สามารถ Convert เป็น Customer หรือปิด Lost ได้
+
+### Customer
+
+เมื่อเป็น Customer ระบบสร้าง/อัปเดต `customer_profiles` โดยผูกกับ `case_id`
+
+CS ใช้ดูแล plan/package, billing cycle, renewal date, risk level, health status, usage status, training status และ notes
+
+ถ้าลูกค้าเลิกใช้ ให้เปลี่ยน `crm_cases.stage` เป็น `churn` และบันทึก `churn_reason`
+
+### My Work
+
+หน้าแรกหลัง Login รวมงานที่ต้องทำทันที:
+
+- Task เปิดอยู่ที่ assigned ให้ผู้ใช้
+- Lead ของ Sale ที่ต้อง follow-up ภายใน 7 วัน
+- Demo ที่ใกล้สิ้นสุดภายใน 7 วัน
+- Customer high risk สำหรับ CS/Admin/Manager
+
+### History
+
+หน้า History แสดงเคสที่ผู้ใช้มีสิทธิ์ดูตาม RLS และเปิดดูข้อมูลหลัก, Demo history, Customer profile, Task และ Activity log ได้
+
+## Roles and Permissions
 
 | Role | สิทธิ์หลัก |
 |---|---|
-| Admin | จัดการได้ทั้งหมด รวม user, master data, account, demo, customer, task |
-| MKT | สร้าง MKT Lead, ได้เลข MKT, เห็น Lead จาก MKT ทั้งทีม |
-| Sale | เห็นและแก้เฉพาะ account ที่ตัวเองเป็น owner |
-| CS | เห็น Demo / Customer / Task ฝั่ง CS ร่วมกัน |
-| Manager | ดู dashboard/report แบบ read-only |
+| admin | เห็นและจัดการ operational records ทั้งหมด, จัดการ profiles |
+| manager | Read-only overview ตาม RLS |
+| mkt | สร้าง Lead, เห็น case ที่ตัวเองสร้าง |
+| sale | เห็น/อัปเดต Lead/Customer journey ที่ตัวเองเป็น `owner_sale_id` |
+| cs | เห็น Demo/Customer/Churn ร่วมกันทั้งทีม และอัปเดต Demo/Customer operations |
 
-## Current UX Behavior
-
-- หลัง login เปิด `งานของฉัน` เป็นหน้าแรก
-- เมื่อกลับมาจาก browser tab อื่น ระบบ reload ข้อมูลและเลื่อนขึ้นบน โดยไม่ interrupt modal/form
-- Sidebar ย่อเป็น icon-only เป็นค่าเริ่มต้น
-- Hover หรือ focus ที่ sidebar แล้วขยายอัตโนมัติ
-- ไม่มีปุ่มย่อ/ขยาย sidebar
-- ฟอร์มสร้าง/เพิ่มข้อมูลเปิดเป็น modal
-- หน้า Leads default แสดง Lead ที่ยังเปิด แต่ยังดู All/Demo/Customer/Lost ได้
-- หน้า Demo แสดงจากบันทึก `demo_sessions` ทั้ง active และ history
-- Collection หลักมี search/filter/sort/pagination
-- Master data ที่ยังไม่ถูกใช้งานลบได้
-- Master data ที่ถูกใช้งานแล้วต้องปิดใช้งานแทนการลบ
-
-
-## UX Flow v1.5.0
-
-- หน้าเริ่มต้นหลัง login คือ `#/my-work`
-- การกลับมาจาก browser tab อื่นจะ reload data และ scroll ขึ้นบน
-- ถ้ามี modal/form เปิดอยู่ ระบบจะไม่ reload อัตโนมัติ
-- เมนูเดโมแสดงจาก `demo_sessions` ไม่ได้ดูเฉพาะ `accounts.lifecycle_stage = demo`
-- เดโมที่เคยบันทึกไว้ยังค้นเจอ แม้บัญชีจะเป็น Customer หรือ Lost แล้ว
-
-## Frontend Pages
-
-```text
-#/dashboard
-#/my-work
-#/leads
-#/accounts
-#/account/:id
-#/demo
-#/customers
-#/tasks
-#/training
-#/reports
-#/admin
-#/unauthorized
-#/not-found
-```
+หมายเหตุ: `profiles` เปิดให้ internal users เห็นรายชื่อ/อีเมล/role เพื่อใช้เลือก owner/assignee ภายในระบบ
 
 ## Database Schema
 
-Core tables:
+### `profiles`
 
-```text
-profiles
-accounts
-account_contacts
-account_activities
-demo_sessions
-demo_users
-demo_logs
-customer_profiles
-training_sessions
-training_participants
-modules
-account_modules
-tasks
-task_comments
-assignment_history
-status_history
-lost_reasons
-lead_sources
-lead_channels
-campaigns
-business_types
-contact_statuses
-account_cs_owners
-app_settings
-```
+| Column | Type | Meaning |
+|---|---|---|
+| id | uuid PK | อ้างถึง `auth.users.id` |
+| email | text | อีเมลผู้ใช้ |
+| full_name | text | ชื่อผู้ใช้ |
+| role | text | `admin`, `manager`, `mkt`, `sale`, `cs` |
+| is_active | boolean | สถานะใช้งาน |
+| created_at / updated_at | timestamptz | audit timestamps |
 
-Important account fields:
+### `crm_cases`
 
-```text
-accounts.id
-accounts.running_no
-accounts.source_type
-accounts.lifecycle_stage
-accounts.lifecycle_status
-accounts.company_name
-accounts.short_name
-accounts.tax_id
-accounts.lead_source_id
-accounts.lead_channel_id
-accounts.campaign_id
-accounts.business_type_id
-accounts.contact_status_id
-accounts.address
-accounts.current_gps_provider
-accounts.product_interest
-accounts.initial_note
-accounts.cars_estimate
-accounts.sale_owner_id
-accounts.created_by
-accounts.mkt_created_by
-accounts.lost_reason_id
-accounts.lost_note
-accounts.lost_from_stage
-accounts.converted_to_customer_at
-```
+| Column | Type | Meaning |
+|---|---|---|
+| id | uuid PK | case id หลัก |
+| case_number | bigint identity unique | เลขเคส |
+| stage | text | `lead`, `demo`, `customer`, `lost`, `churn`, `archived` |
+| source_team | text | `mkt`, `sale`, `cs`, `admin` |
+| company/contact fields | text | ข้อมูลลูกค้า/ผู้ติดต่อ |
+| interested_product | text | สินค้าที่สนใจ |
+| interest_level | text | `low`, `medium`, `high` |
+| qualification_notes | text | note การคัดกรอง |
+| current_need | text | ความต้องการปัจจุบัน |
+| lost_reason | text | เหตุผล Lost |
+| churn_reason | text | เหตุผล Churn |
+| next_follow_up_at | date | วันติดตามต่อ |
+| owner_sale_id | uuid FK | Sale owner |
+| owner_cs_id | uuid FK | CS owner ถ้ามี |
+| created_by / updated_by | uuid FK | ผู้สร้าง/แก้ล่าสุด |
+| timestamps | timestamptz | audit timestamps |
 
-Contact fields:
+### `demo_sessions`
 
-```text
-account_contacts.contact_name
-account_contacts.position
-account_contacts.phone
-account_contacts.phone_2
-account_contacts.phone_3
-account_contacts.email
-account_contacts.email_2
-account_contacts.contact_role
-```
+| Column | Type | Meaning |
+|---|---|---|
+| id | uuid PK | demo id |
+| case_id | uuid FK | อ้างถึง `crm_cases.id` |
+| demo_status | text | `queued`, `scheduled`, `in_progress`, `completed`, `cancelled`, `lost`, `converted` |
+| scheduled_at | timestamptz | เวลานัด demo |
+| start_date / end_date | date | ช่วงทดลอง/demo |
+| demo_users | text | ผู้ใช้งาน demo |
+| requirements | text | requirement |
+| demo_result | text | ผล demo |
+| notes | text | หมายเหตุ |
+| next_follow_up_at | date | วันติดตามต่อ |
+| assigned_cs_id | uuid FK | CS ที่รับผิดชอบถ้ามี |
 
-## Supabase Config
+### `customer_profiles`
 
-Frontend ใช้ Supabase anon key เท่านั้น
+| Column | Type | Meaning |
+|---|---|---|
+| id | uuid PK | customer profile id |
+| case_id | uuid FK unique | ผูก 1:1 กับ case |
+| customer_since | date | วันที่เริ่มเป็นลูกค้า |
+| plan_name | text | package/plan |
+| billing_cycle | text | รอบบิล |
+| renewal_date | date | วันต่ออายุ |
+| risk_level | text | `low`, `medium`, `high` |
+| health_status | text | สถานะสุขภาพลูกค้า |
+| usage_status | text | สถานะการใช้งาน |
+| training_status | text | สถานะอบรม |
+| notes | text | หมายเหตุ |
 
-```js
-const CONFIG = {
-  supabaseUrl: 'https://YOUR_PROJECT_REF.supabase.co',
-  supabaseAnonKey: 'YOUR_SUPABASE_ANON_KEY'
-}
-```
+### `tasks`
 
-ห้ามใส่ `service_role key` ใน frontend
+| Column | Type | Meaning |
+|---|---|---|
+| id | uuid PK | task id |
+| case_id | uuid FK | case ที่เกี่ยวข้อง |
+| title | text | ชื่องาน |
+| task_type | text | `follow_up`, `demo`, `training`, `billing`, `risk`, `other` |
+| assigned_to | uuid FK | ผู้รับผิดชอบ |
+| due_date | date | วันครบกำหนด |
+| status | text | `open`, `done`, `cancelled` |
+| priority | text | `low`, `medium`, `high` |
+| notes | text | หมายเหตุ |
+| completed_at | timestamptz | เวลาปิดงาน |
 
-## SQL / Migration
+### `case_activities`
 
-v1.5.0 ไม่มี SQL migration ใหม่ ถ้าระบบของคุณเคยรัน migration v1.4.x แล้ว deploy frontend ได้เลย
+| Column | Type | Meaning |
+|---|---|---|
+| id | uuid PK | activity id |
+| case_id | uuid FK | case ที่เกี่ยวข้อง |
+| actor_id | uuid FK | ผู้ทำ action |
+| activity_type | text | ประเภท action |
+| from_stage / to_stage | text | stage ก่อน/หลัง |
+| note | text | note |
+| metadata | jsonb | รายละเอียดเพิ่มเติม |
+| created_at | timestamptz | เวลาบันทึก |
 
-### SQL Migration v1.4.x
+## RLS Summary
 
-ถ้าอัปเกรดจาก v1.3.0 ให้รัน migration v1.4.x ก่อน deploy frontend
+เปิด RLS ทุก table ที่ frontend เข้าถึง
 
-สิ่งที่ migration ทำ:
+- `admin`: เห็นและจัดการทั้งหมด
+- `manager`: อ่านข้อมูล operational ทั้งหมด
+- `mkt`: สร้าง Lead และเห็น case ที่ตัวเองสร้าง
+- `sale`: เห็น/แก้ case ที่ตัวเองเป็น `owner_sale_id`
+- `cs`: เห็น Demo/Customer/Churn ร่วมกันทั้งทีม และอัปเดต operations ที่เกี่ยวข้อง
+- ไม่มี delete policy สำหรับ business tables
 
-```text
-- drop accounts.legacy_account_id
-- drop idx_accounts_legacy_account_id
-- recreate create_mkt_lead โดยไม่มี p_legacy_account_id
-- recreate create_sales_lead โดยไม่มี p_legacy_account_id
-- keep lead_channels และ business_types
-```
+รายละเอียด policy อยู่ใน `sql/001_initial_schema.sql`
 
 ## Deploy
 
-```bash
-git status
-git add README.md index.html script.js style.css
-git commit -m "release: ux flow stabilization v1.5.0"
-git push
-```
+เหมาะกับ static hosting เช่น Netlify, Vercel Static, GitHub Pages หรือ internal web server
 
-หลัง GitHub Pages deploy ให้ hard refresh:
+ต้อง deploy ไฟล์เหล่านี้พร้อมกัน:
 
 ```text
-Windows: Ctrl + F5
-Mac: Cmd + Shift + R
+index.html
+style.css
+script.js
+README.md
+sql/001_initial_schema.sql
 ```
+
+สำหรับ GitHub Pages ให้เปิดจาก root ของ repository ได้เลย
 
 ## Test Checklist
 
-- Login ด้วย Admin แล้วควรเข้า `งานของฉัน`
-- เปิดหน้าอื่น เลื่อนลงล่าง สลับ browser tab แล้วกลับมา ต้อง reload และ scroll ขึ้นบน
-- เมนูเดโมต้องเห็นรายการจาก demo_sessions แม้ account จะเป็นลูกค้าแล้ว
-- รัน SQL migration v1.4.1 สำเร็จ
-- เปิด Sidebar แล้วเห็น icon-only
-- Hover sidebar แล้วเมนูขยาย
-- ไม่มีปุ่มย่อ/ขยาย sidebar
-- ฟอร์ม MKT/Sale ไม่มี Account ID ระบบเดิม
-- สร้าง MKT Lead ได้และเห็นเลข MKT + Sale ที่ได้รับงาน
-- สร้าง Sale Lead ได้
-- Account Detail ไม่มี Account ID เดิม
-- Master data ที่ยังไม่ถูกใช้งานลบได้
-- Master data ที่ถูกใช้งานแล้วไม่มีปุ่มลบ และปิดใช้งานได้
-- Sale ยังเห็นเฉพาะ account ของตัวเอง
-- CS ยังเห็น Demo/Customer ตาม rule เดิม
-- `node --check script.js` ผ่าน
+ตรวจแล้วในระดับไฟล์:
+
+- `script.js` ผ่าน syntax check ด้วย `node --check`
+- `index.html` อ้างอิงเฉพาะ `style.css` และ `script.js`
+- ZIP มีเฉพาะ 4 ไฟล์หลัก + `sql/`
+- README ไม่มี secret/password/token/service_role key จริง
+
+ต้องทดสอบเองหลังเชื่อม Supabase จริง:
+
+- Login/logout
+- Role permission ทั้ง 5 role
+- Create Lead
+- Send to Demo
+- Convert to Customer
+- Close Lost
+- Mark Churn
+- Create/complete/cancel Task
+- My Work แสดงงานถูกต้อง
+- Demo history ยังอยู่หลัง convert เป็น Customer
+- RLS ไม่ leak ข้อมูลข้าม role
 
 ## Rollback
 
 Frontend:
 
-```bash
-git revert <commit_sha>
-git push
-```
+- กลับไปใช้ไฟล์ ZIP/release ก่อนหน้า หรือ revert commit ล่าสุด
 
 Database:
 
-v1.4.x ลบ column `legacy_account_id` ถ้าต้อง rollback DB ต้อง restore จาก Supabase backup เท่านั้น
+- ถ้ายังไม่มีข้อมูลจริง สามารถ drop table/policy/function ตามลำดับ dependency ใน migration note ได้
+- ถ้ามีข้อมูลจริงแล้ว ให้ backup database ก่อน และใช้ migration rollback เฉพาะจุด ห้าม drop table ตรง ๆ
+
+## Known Limitations
+
+- ยังไม่มี report/export ขั้นสูง
+- ยังไม่มี file upload
+- ยังไม่มี print/PDF layout
+- ยังไม่มี automated test ที่รันกับ Supabase จริง
+- ต้องตั้งค่า Supabase URL และ anon key เองผ่านหน้า Setup หรือแก้ `script.js`
